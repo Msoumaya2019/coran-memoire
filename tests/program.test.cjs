@@ -46,6 +46,58 @@ test('le plan évite les passages mémorisés au milieu et les doublons',()=>{
   assert(state.sessions.every(s=>q.surahAt(s.start).number===q.surahAt(s.end).number));
 });
 
+test('tout le Coran peut commencer par An-Nâs puis remonter les sourates',()=>{
+  let state=p.defaultState();
+  state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
+  state.pace='verse3';
+  state=p.generateProgram(state,monday,4);
+  const future=state.sessions.filter(s=>s.status==='todo');
+  assert.deepEqual(future.slice(0,3).map(s=>[q.surahAt(s.start).number,s.start,s.end]),[
+    [114,q.surahs[113].start,q.surahs[113].start+2],
+    [114,q.surahs[113].start+3,q.surahs[113].end],
+    [113,q.surahs[112].start,q.surahs[112].start+2],
+  ]);
+  assert(future.every(s=>q.surahAt(s.start).number===q.surahAt(s.end).number));
+});
+
+test('le parcours depuis An-Nâs atteint Al-Fatiha sans verset manquant',()=>{
+  let state=p.defaultState();
+  state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
+  state=p.generateProgram(state,monday);
+  const ids=state.sessions.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));
+  assert.equal(ids.length,6236);
+  assert.equal(new Set(ids).size,6236);
+  assert.equal(q.surahAt(state.sessions[0].start).number,114);
+  assert.equal(q.surahAt(state.sessions.at(-1).end).number,1);
+});
+
+test('depuis An-Nâs, les passages connus sont sautés et le rythme page garde le bon ordre',()=>{
+  let state=p.defaultState();
+  state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
+  state.pace='page';
+  state=p.markKnowledge(state,q.surahs[113],'perfect');
+  state=p.generateProgram(state,monday,2);
+  const future=state.sessions.filter(s=>s.status==='todo');
+  assert.equal(future[0].start,q.surahs[112].start);
+  assert(future.every(s=>s.end<q.surahs[113].start));
+  assert(future.every((s,i)=>i===0||s.date!==future[i-1].date||q.surahAt(s.start).number<=q.surahAt(future[i-1].start).number));
+  const ids=future.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));
+  assert.equal(new Set(ids).size,ids.length);
+});
+
+test('changer vers un départ An-Nâs conserve les séances terminées',()=>{
+  let state=p.defaultState();
+  state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromStart'};
+  state.pace='verse5';
+  state=p.generateProgram(state,monday,4);
+  const first=state.sessions[0];
+  state=p.completeSession(state,first.id,true,monday);
+  state=p.generateProgram({...state,goal:{...state.goal,direction:'fromNas'}},monday,4);
+  assert.equal(state.sessions.find(s=>s.id===first.id).status,'done');
+  assert.equal(state.sessions.find(s=>s.status==='todo').start,q.surahs[113].start);
+  assert(p.progress(state).goal>0);
+});
+
 test('report et modification du rythme conservent l’historique',()=>{
   let state=p.defaultState();state.goal={label:'Test',ranges:[{start:5900,end:5930}]};
   state=p.generateProgram(state,monday,30);

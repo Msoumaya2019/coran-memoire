@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Linking, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { Button, Card, Choice, colors, Field, Label, Title } from './ui/theme';
-import { AppState, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, markKnowledge, Mastery, Pace, paceLabels, postponeSession, progress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
+import { AppState, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, LearningDirection, markKnowledge, Mastery, Pace, paceLabels, postponeSession, progress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
 import { loadState, saveState } from './services/storage';
 import { currentUser, pullState, pushState, signIn, signOut, supabase, syncConfigured } from './services/sync';
@@ -58,7 +58,7 @@ export default function App(){
 function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void}){
   return <>
     <View style={{paddingTop:12,paddingBottom:20}}><Label style={{color:colors.muted}}>Bonjour et bienvenue dans ton programme de mémorisation.</Label><Title>Ton chemin, jour après jour</Title></View>
-    <Card style={{backgroundColor:colors.green,borderColor:colors.green,padding:22}}><Label style={{color:'#BFD6C9',fontSize:13}}>MON OBJECTIF ACTUEL</Label><Text style={{color:'white',fontSize:23,fontWeight:'700',marginTop:7}}>{state.goal.label}</Text><View style={{height:8,backgroundColor:'#49756B',borderRadius:10,marginTop:20}}><View style={{width:percent(prog.goal) as any,height:8,backgroundColor:'#DBC591',borderRadius:10}} /></View><View style={{flexDirection:'row',justifyContent:'space-between',marginTop:9}}><Label style={{color:'white',fontSize:13}}>Objectif : {percent(prog.goal)}</Label><Label style={{color:'#C9DDCF',fontSize:13}}>Coran : {percent(prog.quran)}</Label></View></Card>
+    <Card style={{backgroundColor:colors.green,borderColor:colors.green,padding:22}}><Label style={{color:'#BFD6C9',fontSize:13}}>MON OBJECTIF ACTUEL</Label><Text style={{color:'white',fontSize:23,fontWeight:'700',marginTop:7}}>{state.goal.label}</Text>{state.goal.direction==='fromNas'&&<Label style={{color:'#C9DDCF',fontSize:13,marginTop:5}}>Depuis An-Nâs, sourate après sourate</Label>}<View style={{height:8,backgroundColor:'#49756B',borderRadius:10,marginTop:20}}><View style={{width:percent(prog.goal) as any,height:8,backgroundColor:'#DBC591',borderRadius:10}} /></View><View style={{flexDirection:'row',justifyContent:'space-between',marginTop:9}}><Label style={{color:'white',fontSize:13}}>Objectif : {percent(prog.goal)}</Label><Label style={{color:'#C9DDCF',fontSize:13}}>Coran : {percent(prog.quran)}</Label></View></Card>
     {section('Aujourd’hui')}
     <Card>{todaySessions.length?<><Label style={{color:colors.muted,fontSize:13}}>PROGRAMME D’APPRENTISSAGE</Label>{todaySessions.map(s=><View key={s.id} style={{marginTop:9}}><Label style={{fontWeight:'700'}}>{reference(s)}</Label><Label style={{color:colors.muted,fontSize:13}}>{paceLabels[s.unit]}</Label></View>)}</>:<Label style={{color:colors.muted}}>Aucune nouvelle séance prévue aujourd’hui.</Label>}</Card>
     <Button disabled={!todaySessions.length} onPress={()=>todaySessions[0]&&openReader({range:todaySessions[0],sessionId:todaySessions[0].id})}>COMMENCER MON APPRENTISSAGE</Button>
@@ -79,7 +79,7 @@ function QuranScreen({openReader}:{openReader:(r:Reader)=>void}){
 function ProgramScreen({state,update,openReader,openWizard}:{state:AppState;update:(s:AppState)=>void;openReader:(r:Reader)=>void;openWizard:()=>void}){
   const [showAll,setShowAll]=useState(false);
   const future=state.sessions.filter(s=>s.status==='todo');
-  return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon programme</Title><Label style={{color:colors.muted}}>{state.goal.label} · {paceLabels[state.pace]} par séance</Label></View>
+  return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon programme</Title><Label style={{color:colors.muted}}>{state.goal.label} · {paceLabels[state.pace]} par séance{state.goal.direction==='fromNas'?' · depuis An-Nâs':''}</Label></View>
     <Button secondary onPress={openWizard}>Modifier l’objectif et le rythme</Button>
     {section('À venir')}
     {(showAll?future:future.slice(0,25)).map(s=><Card key={s.id}><Label style={{fontSize:12,color:colors.gold,fontWeight:'700',textTransform:'uppercase'}}>{dateText(s.date)}</Label><Label style={{fontWeight:'700',marginTop:5}}>{reference(s)}</Label><Label style={{color:colors.muted,fontSize:13}}>{paceLabels[s.unit]} · À faire</Label><View style={{flexDirection:'row',gap:8,marginTop:10}}><View style={{flex:1}}><Button small onPress={()=>openReader({range:s,sessionId:s.id})}>Ouvrir</Button></View><View style={{flex:1}}><Button small secondary onPress={()=>update(postponeSession(state,s.id))}>Reporter</Button></View></View></Card>)}
@@ -128,6 +128,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
   const [mastery,setMastery]=useState<Mastery>('perfect');
   const [partSurah,setPartSurah]=useState(''),[partStart,setPartStart]=useState(''),[partEnd,setPartEnd]=useState('');
   const [kind,setKind]=useState<'all'|'amma'|'sabbih'|'juz'|'hizb'|'custom'>(state.goal.label==='Tout le Coran'?'all':state.goal.label==='Hizb Sabbih'?'sabbih':state.goal.label==='Juz’ ‘Amma'?'amma':'custom');
+  const [direction,setDirection]=useState<LearningDirection>(state.goal.direction??'fromStart');
   const [selectedJuz,setSelectedJuz]=useState<number[]>([]),[selectedHizb,setSelectedHizb]=useState<number[]>([]),[selectedSurahs,setSelectedSurahs]=useState<number[]>([]);
   const [customSurah,setCustomSurah]=useState(''),[customStart,setCustomStart]=useState(''),[customEnd,setCustomEnd]=useState('');
   const [customRanges,setCustomRanges]=useState<Range[]>([]);
@@ -156,7 +157,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
       if(kind==='custom'){ranges=[...selectedSurahs.map(n=>surahs[n-1]),...selectedHizb.map(n=>hizbs[n-1]),...customRanges];label='Objectif personnalisé';}
       ranges=normalizeRanges(ranges);
       if(!validGoal(ranges)){setError('Choisis au moins l’équivalent d’un hizb complet. Les passages déjà mémorisés comptent dans cet objectif.');return;}
-      update(touch({...state,goal:{label,ranges}}));setStep(2);return;
+      update(touch({...state,goal:{label,ranges,direction:kind==='all'?direction:'fromStart'}}));setStep(2);return;
     }
     if(step===2){setStep(3);return;}
     if(!state.learningDays.length){setError('Sélectionne au moins un jour d’apprentissage.');return;}
@@ -175,6 +176,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
       </>}
       {step===1&&<>
         {([['all','Mémoriser tout le Coran'],['amma','Mémoriser Juz’ ‘Amma'],['sabbih','Mémoriser Hizb Sabbih'],['juz','Un ou plusieurs juz’'],['hizb','Un ou plusieurs hizb'],['custom','Objectif personnalisé']] as [typeof kind,string][]).map(([value,label])=><Choice key={value} label={label} selected={kind===value} onPress={()=>setKind(value)} />)}
+        {kind==='all'&&<>{section('Par où commencer ?')}<Choice label="Depuis Al-Fatiha" subtitle="Sourates 1 à 114" selected={direction==='fromStart'} onPress={()=>setDirection('fromStart')} /><Choice label="Depuis An-Nâs" subtitle="Sourates 114 à 1 ; versets de chaque sourate dans l’ordre" selected={direction==='fromNas'} onPress={()=>setDirection('fromNas')} /></>}
         {kind==='juz'&&<>{section('Sélectionne les juz’')}{juzs.map(j=><Choice key={j.number} label={`Juz’ ${j.number}`} selected={selectedJuz.includes(j.number)} onPress={()=>toggle(selectedJuz,j.number,setSelectedJuz)} />)}</>}
         {(kind==='hizb'||kind==='custom')&&<>{section('Sélectionne les hizb')}{hizbs.map(h=><Choice key={h.number} label={`Hizb ${h.number}`} selected={selectedHizb.includes(h.number)} onPress={()=>toggle(selectedHizb,h.number,setSelectedHizb)} />)}</>}
         {kind==='custom'&&<>{section('Sourates')}{surahs.map(s=><Choice key={s.number} label={`${s.number}. ${s.name}`} selected={selectedSurahs.includes(s.number)} onPress={()=>toggle(selectedSurahs,s.number,setSelectedSurahs)} />)}{section('Passage précis')}<Field value={customSurah} onChangeText={setCustomSurah} placeholder="Numéro de sourate" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={customStart} onChangeText={setCustomStart} placeholder="Verset début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={customEnd} onChangeText={setCustomEnd} placeholder="Verset fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(true)}>Ajouter le passage</Button>{customRanges.map((r,i)=><Label key={i}>{reference(r)}</Label>)}</>}

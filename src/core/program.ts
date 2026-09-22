@@ -5,7 +5,8 @@ export type Pace = 'verse3' | 'verse5' | 'halfPage' | 'page' | 'quarter' | 'half
 export type SessionStatus = 'todo' | 'done' | 'postponed';
 export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
-export type Goal = { label: string; ranges: Range[] };
+export type LearningDirection = 'fromStart' | 'fromNas';
+export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
 
 export const paceLabels: Record<Pace,string> = { verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
@@ -23,6 +24,12 @@ export function markKnowledge(state: AppState, range: Range, mastery: Mastery): 
   return touch({...state,knowledge});
 }
 export function goalIds(state: AppState): number[] {return expand(state.goal.ranges);}
+export function learningOrderIds(state: AppState): number[] {
+  const ids=goalIds(state);
+  return state.goal.direction==='fromNas'
+    ? ids.sort((a,b)=>surahAt(b).number-surahAt(a).number||a-b)
+    : ids;
+}
 export function memorizedIds(state: AppState): number[] {return Object.keys(state.knowledge).map(Number).filter(id=>state.knowledge[id]==='perfect'||state.knowledge[id]==='review');}
 export function progress(state: AppState) {
   const known = new Set(memorizedIds(state));
@@ -44,7 +51,7 @@ function nextChunk(remaining: number[], pace: Pace): number[] {
   const first=remaining[0];
   if(pace==='halfPage'||pace==='page') {
     const pr=pageRange(pageOf(first));
-    const within=remaining.filter(id=>id>=first&&id<=pr.end);
+    const within=takePrefix(remaining,id=>id>=pr.start&&id<=pr.end);
     if(pace==='page')return within;
     const target=volume(Array.from({length:pr.end-pr.start+1},(_,i)=>pr.start+i))/2;
     let sum=0;const out:number[]=[];
@@ -53,7 +60,12 @@ function nextChunk(remaining: number[], pace: Pace): number[] {
   }
   const divisions=pace==='quarter'?quarters:pace==='halfHizb'?halves:hizbs;
   const boundary=divisions.find(d=>first>=d.start&&first<=d.end)!;
-  return remaining.filter(id=>id>=first&&id<=boundary.end);
+  return takePrefix(remaining,id=>id>=boundary.start&&id<=boundary.end);
+}
+function takePrefix(ids:number[],includes:(id:number)=>boolean):number[] {
+  const out:number[]=[];
+  for(const id of ids){if(!includes(id))break;out.push(id);}
+  return out;
 }
 function splitContiguous(ids: number[]): Range[] {
   const result: Range[]=[];
@@ -64,7 +76,7 @@ export function generateProgram(state: AppState, from=todayLocal(), days=20000):
   const old=state.sessions.filter(s=>s.status!=='todo'||s.date<from).map(s=>s.status==='todo'?{...s,status:'postponed' as SessionStatus}:s);
   const scheduled=new Set(old.filter(s=>s.status==='done').flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i)));
   const known=new Set(memorizedIds(state));
-  let remaining=goalIds(state).filter(id=>!known.has(id)&&!scheduled.has(id));
+  let remaining=learningOrderIds(state).filter(id=>!known.has(id)&&!scheduled.has(id));
   const sessions: Session[]=[];
   let serial=0;
   for(let offset=0;offset<days&&remaining.length;offset++){
@@ -74,7 +86,7 @@ export function generateProgram(state: AppState, from=todayLocal(), days=20000):
     remaining=remaining.slice(chunk.length);
     for(const range of splitContiguous(chunk))sessions.push({id:`${date}-${range.start}-${serial++}`,date,...range,unit:state.pace,status:'todo'});
   }
-  return touch({...state,sessions:[...old,...sessions].sort((a,b)=>a.date.localeCompare(b.date)||a.start-b.start)});
+  return touch({...state,sessions:[...old,...sessions].sort((a,b)=>a.date.localeCompare(b.date))});
 }
 export function seedInitialRevisions(state:AppState,from=todayLocal()):AppState {
   const covered=new Set(state.revisions.flatMap(r=>Array.from({length:r.end-r.start+1},(_,i)=>r.start+i)));
