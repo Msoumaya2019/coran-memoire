@@ -2,6 +2,8 @@
 
 Application Expo, React Native et TypeScript pour mémoriser le Coran en Hafs ‘an ‘Âsim. L’interface est en français. Le texte et les 604 pages du mushaf sont disponibles hors ligne.
 
+L’icône de l’application provient de l’image fournie par le propriétaire du projet et se trouve dans `assets/icon.png`.
+
 ## État de la version
 
 - Questionnaire initial : sourates, juz’, hizb, passages partiels, niveaux de maîtrise, objectif, rythme et jours.
