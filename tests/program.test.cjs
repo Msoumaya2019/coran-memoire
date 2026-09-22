@@ -5,6 +5,13 @@ const q=require('./build/core/quran.js');
 const toumoun=require('../src/data/toumoun.json');
 const monday='2026-09-21';
 
+test('un nouveau téléphone récupère la sauvegarde distante avant tout progrès local',()=>{
+  const fresh=p.defaultState();
+  assert.equal(fresh.updatedAt,'1970-01-01T00:00:00.000Z');
+  assert.equal(fresh.onboardingDone,false);
+  assert(new Date(fresh.updatedAt)<new Date('2026-01-01T00:00:00.000Z'));
+});
+
 test('corpus Hafs et limites officielles cohérents',()=>{
   assert.equal(q.verses.length,6236);
   assert.equal(q.surahs.length,114);

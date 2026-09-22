@@ -10,7 +10,7 @@ export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<s
 
 export const paceLabels: Record<Pace,string> = { verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const weekdays = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:new Date().toISOString()});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:'1970-01-01T00:00:00.000Z'});
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
 export function addDays(key: string, days: number): string { const d=new Date(`${key}T12:00:00`);d.setDate(d.getDate()+days);return dateKey(d); }

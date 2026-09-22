@@ -15,7 +15,7 @@ export async function signIn(email:string,password:string,register=false) {
   if(!supabase)throw new Error('Synchronisation non configurée');
   const result=register?await supabase.auth.signUp({email,password}):await supabase.auth.signInWithPassword({email,password});
   if(result.error)throw result.error;
-  return result.data.user;
+  return result.data.session?result.data.user:null;
 }
 export async function signOut(){await supabase?.auth.signOut();}
 export async function pullState():Promise<AppState|null>{
