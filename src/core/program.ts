@@ -2,7 +2,8 @@ import { expand, hizbs, normalizeRanges, pageOf, pageRange, quarters, halves, Ra
 import { verifiedToumouns } from './toumoun';
 
 export type Mastery = 'perfect' | 'review' | 'learning';
-export type Pace = 'verse3' | 'verse5' | 'halfPage' | 'page' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
+export type Pace = 'verse1' | 'verse3' | 'verse5' | 'halfPage' | 'page' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
+export type PacePreset = 'beginner' | 'intermediate' | 'intensive';
 export type SessionStatus = 'todo' | 'done' | 'postponed';
 export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
@@ -10,7 +11,12 @@ export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
 
-export const paceLabels: Record<Pace,string> = { verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
+export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
+export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
+  beginner:{label:'Débutant',pace:'verse1',description:'1 verset par séance'},
+  intermediate:{label:'Intermédiaire',pace:'verse3',description:'3 versets par séance'},
+  intensive:{label:'Intensif',pace:'page',description:'1 page par séance'},
+};
 export const availablePaces = (Object.keys(paceLabels) as Pace[]).filter(p => p !== 'toumoun' || verifiedToumouns !== null);
 export const weekdays = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:'1970-01-01T00:00:00.000Z'});
@@ -54,7 +60,7 @@ export function validGoal(ranges: Range[]): boolean {
 
 function nextChunk(remaining: number[], pace: Pace): number[] {
   if(!remaining.length)return [];
-  if(pace==='verse3'||pace==='verse5') return remaining.slice(0,pace==='verse3'?3:5);
+  if(pace==='verse1'||pace==='verse3'||pace==='verse5') return remaining.slice(0,pace==='verse1'?1:pace==='verse3'?3:5);
   const first=remaining[0];
   if(pace==='halfPage'||pace==='page') {
     const pr=pageRange(pageOf(first));

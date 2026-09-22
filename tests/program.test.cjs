@@ -48,6 +48,23 @@ test('le rythme toumoun exige 480 limites Hafs vérifiées et contiguës',()=>{
   assert.throws(()=>p.generateProgram({...p.defaultState(),pace:'toumoun'},monday,2),/limites Hafs/);
 });
 
+test('le niveau débutant programme un verset par jour sans répéter un verset connu',()=>{
+  assert.equal(p.pacePresets.beginner.pace,'verse1');
+  assert.equal(p.pacePresets.intermediate.pace,'verse3');
+  assert.equal(p.pacePresets.intensive.pace,'page');
+  let state=p.defaultState();
+  state.goal={label:'Passage',ranges:[{start:6230,end:6236}]};
+  state.pace=p.pacePresets.beginner.pace;
+  state.learningDays=[0,1,2,3,4,5,6];
+  state=p.markKnowledge(state,{start:6232,end:6232},'perfect');
+  state=p.generateProgram(state,monday,7);
+  const sessions=state.sessions.filter(s=>s.status==='todo');
+  assert.equal(sessions.length,6);
+  assert.deepEqual(sessions.map(s=>s.start),[6230,6231,6233,6234,6235,6236]);
+  assert(sessions.every(s=>s.start===s.end&&s.unit==='verse1'));
+  assert.deepEqual(sessions.map(s=>s.date),[monday,p.addDays(monday,1),p.addDays(monday,2),p.addDays(monday,3),p.addDays(monday,4),p.addDays(monday,5)]);
+});
+
 test('corpus Hafs et limites officielles cohérents',()=>{
   assert.equal(q.verses.length,6236);
   assert.equal(q.surahs.length,114);

@@ -5,6 +5,7 @@ Application Expo, React Native et TypeScript pour mémoriser le Coran en Hafs �
 ## État de la version
 
 - Questionnaire initial : sourates, juz’, hizb, passages partiels, niveaux de maîtrise, objectif, rythme et jours.
+- Rythme de **1 verset par jour** lorsque les sept jours sont sélectionnés. Trois niveaux prêts à choisir : Débutant (1 verset par séance), Intermédiaire (3 versets) et Intensif (1 page). Le choix manuel du rythme reste disponible.
 - Programme durable dans SQLite : passages connus exclus, historique conservé lors des recalculs, report des séances. Pour l’objectif « Tout le Coran », choix entre commencer par Al-Fatiha ou par An-Nâs, puis parcourir les sourates précédentes en gardant les versets de chaque sourate dans leur ordre.
 - Lecteur page par page du mushaf Hafs 1405, avec glissement horizontal dans les deux sens, repères visuels des versets de la séance et mode récitation masqué.
 - Révisions espacées indépendantes du nouvel apprentissage.
