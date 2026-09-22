@@ -1,7 +1,8 @@
 import { expand, hizbs, normalizeRanges, pageOf, pageRange, quarters, halves, Range, surahAt, totalVolume, volume, weights } from './quran';
+import { verifiedToumouns } from './toumoun';
 
 export type Mastery = 'perfect' | 'review' | 'learning';
-export type Pace = 'verse3' | 'verse5' | 'halfPage' | 'page' | 'quarter' | 'halfHizb' | 'hizb';
+export type Pace = 'verse3' | 'verse5' | 'halfPage' | 'page' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
 export type SessionStatus = 'todo' | 'done' | 'postponed';
 export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
@@ -9,9 +10,15 @@ export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
 
-export const paceLabels: Record<Pace,string> = { verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
+export const paceLabels: Record<Pace,string> = { verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
+export const availablePaces = (Object.keys(paceLabels) as Pace[]).filter(p => p !== 'toumoun' || verifiedToumouns !== null);
 export const weekdays = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:'1970-01-01T00:00:00.000Z'});
+export const resetAllProgress = (previous?: AppState): AppState => {
+  const now = Date.now();
+  const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
+  return {...defaultState(),updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+};
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
 export function addDays(key: string, days: number): string { const d=new Date(`${key}T12:00:00`);d.setDate(d.getDate()+days);return dateKey(d); }
@@ -58,7 +65,8 @@ function nextChunk(remaining: number[], pace: Pace): number[] {
     for(const id of within){out.push(id);sum+=weights[id-1];if(sum>=target)break;}
     return out;
   }
-  const divisions=pace==='quarter'?quarters:pace==='halfHizb'?halves:hizbs;
+  if(pace==='toumoun'&&!verifiedToumouns)throw new Error('Les limites Hafs des toumoun ne sont pas vérifiées.');
+  const divisions=pace==='toumoun'?verifiedToumouns!:pace==='quarter'?quarters:pace==='halfHizb'?halves:hizbs;
   const boundary=divisions.find(d=>first>=d.start&&first<=d.end)!;
   return takePrefix(remaining,id=>id>=boundary.start&&id<=boundary.end);
 }

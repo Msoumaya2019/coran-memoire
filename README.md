@@ -6,11 +6,12 @@ Application Expo, React Native et TypeScript pour mémoriser le Coran en Hafs �
 
 - Questionnaire initial : sourates, juz’, hizb, passages partiels, niveaux de maîtrise, objectif, rythme et jours.
 - Programme durable dans SQLite : passages connus exclus, historique conservé lors des recalculs, report des séances. Pour l’objectif « Tout le Coran », choix entre commencer par Al-Fatiha ou par An-Nâs, puis parcourir les sourates précédentes en gardant les versets de chaque sourate dans leur ordre.
-- Lecteur page par page du mushaf Hafs 1405, avec repères visuels des versets de la séance et mode récitation masqué.
+- Lecteur page par page du mushaf Hafs 1405, avec glissement horizontal dans les deux sens, repères visuels des versets de la séance et mode récitation masqué.
 - Révisions espacées indépendantes du nouvel apprentissage.
 - Statistiques calculées avec un poids commun fondé sur les lettres des versets mémorisés ; une même plage n’est comptée qu’une fois.
 - Compte et synchronisation Supabase facultatifs, avec règles d’accès par utilisateur.
-- 480 entrées de toumoun dans `src/data/toumoun.json` **sans limites de versets** : une source fiable vérifiant les limites en Hafs reste à établir. Ce rythme est désactivé. Les rub‘, nisf, hizb et juz’ proviennent des métadonnées Hafs de Quran Meta.
+- Remise à zéro de l’apprentissage, des révisions et de l’historique depuis Réglages, avec synchronisation du nouvel état au compte connecté.
+- 480 entrées de toumoun dans `src/data/toumoun.json` **sans limites de versets** : une source fiable vérifiant les limites en Hafs reste à établir. Le moteur accepte ce rythme uniquement si les 480 entrées sont sourcées, vérifiées et contiguës. Il est actuellement indisponible. Les rub‘, nisf, hizb et juz’ proviennent des métadonnées Hafs de Quran Meta.
 
 ## Sources coraniques
 
@@ -19,6 +20,8 @@ Le texte arabe vocalisé provient de Tanzil, version Uthmani Hafs, repris sans m
 Les 604 images Hafs 1405 ont été extraites de l’IPA fournie par le propriétaire du projet. Le fichier `ayahinfo_1920.db` de cette IPA a servi à construire `pages.json` et `bounds.json`, afin d’associer chaque verset à sa page et d’afficher les repères dans le lecteur. Le code ne modifie pas les images du mushaf. Avant la publication publique du dépôt, confirmer que les droits invoqués couvrent bien la redistribution de ces 604 images, y compris les éléments du Complexe du roi Fahd. Le texte Tanzil reste soumis à sa propre licence.
 
 Les limites des 30 juz’ et 240 rub‘ proviennent de [Quran Meta](https://github.com/quran-center/quran-meta), spécifiquement de son jeu Hafs. Les 60 hizb et 120 nisf sont des regroupements exacts de ces rub‘. Quran Meta fournit les toumoun pour Qaloun, sans équivalent direct Hafs ; aucun numéro de verset Qaloun n’a été transposé ici.
+
+Une [présentation du Mushaf Afrique](https://cp.alukah.net/personal_pages/0/27321/%D9%85%D8%B5%D8%AD%D9%81-%D8%A5%D9%81%D8%B1%D9%8A%D9%82%D9%8A%D8%A7/) décrit un découpage en toumoun sur une édition Hafs. Elle signale trois limites situées au milieu des versets 2:196, 3:7 et 18:22. Ce découpage ne peut donc pas être représenté *exactement* par de simples plages de versets entiers. Pour activer le rythme, il faut une liste complète de 480 limites vérifiées et une décision éditoriale explicite pour ces trois passages ; une approximation ne sera pas présentée comme authentifiée.
 
 ## Développement local
 

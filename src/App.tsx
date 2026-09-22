@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Linking, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Image, Linking, PanResponder, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { Button, Card, Choice, colors, Field, Label, Title } from './ui/theme';
-import { AppState, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, LearningDirection, markKnowledge, Mastery, Pace, paceLabels, postponeSession, progress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
+import { AppState, availablePaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, LearningDirection, markKnowledge, Mastery, Pace, paceLabels, postponeSession, progress, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
+import { verifiedToumouns } from './core/toumoun';
+import { pageAfterSwipe } from './core/pageNavigation';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
 import { loadState, saveState } from './services/storage';
 import { currentUser, pullState, pushState, signIn, signOut, supabase, syncConfigured } from './services/sync';
@@ -27,8 +29,14 @@ export default function App(){
   const [notice,setNotice]=useState('');
   const today=todayLocal();
   const update=(next:AppState)=>{setState(next);saveState(next);if(account)pushState(next).catch(e=>setNotice(`Synchronisation : ${e.message}`));};
+  const resetAll=async()=>{
+    const fresh=resetAllProgress(loadState());
+    saveState(fresh);setState(fresh);setReader(null);setPage(1);setMasked(false);setRevealed(null);setTab('Accueil');setWizard(0);
+    setNotice('Apprentissage et révisions remis à zéro.');
+    if(account)try{await pushState(fresh);}catch(e:any){setNotice(`Remise à zéro effectuée sur ce téléphone. Synchronisation en attente : ${e.message}`);}
+  };
   useEffect(()=>{if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
-  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){setState(remote);saveState(remote);setWizard(remote.onboardingDone?null:0);}else await pushState(state);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
+  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);setWizard(remote.onboardingDone?null:0);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
   const openReader=(r:Reader)=>{setReader(r);setPage(pageOf(r.range.start));setMasked(false);setRevealed(null);};
   const closeReader=()=>setReader(null);
   const statsNow=stats(state,today),prog=progress(state);
@@ -46,7 +54,7 @@ export default function App(){
           {tab==='Coran'&&<QuranScreen openReader={openReader} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setWizard(1)} />}
           {tab==='Progrès'&&<ProgressScreen state={state} prog={prog} stat={statsNow} allDone={allDone} />}
-          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} />}
+          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} onReset={resetAll} />}
         </ScrollView>
         <View style={{height:74,backgroundColor:colors.paper,borderTopWidth:1,borderColor:colors.line,flexDirection:'row',justifyContent:'space-around',paddingBottom:12,paddingTop:8}}>
           {(['Accueil','Coran','Programme','Progrès','Profil'] as Tab[]).map((name,i)=><Pressable key={name} onPress={()=>setTab(name)} style={{alignItems:'center',justifyContent:'center',flex:1}}><Text style={{fontSize:22,color:tab===name?colors.green:colors.muted}}>{['⌂','۞','▤','▥','◯'][i]}</Text><Text style={{fontSize:10,fontWeight:tab===name?'700':'500',color:tab===name?colors.green:colors.muted}}>{name}</Text></Pressable>)}
@@ -113,13 +121,19 @@ function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnTyp
   </>;
 }
 
-function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void}){
+function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal,onReset}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void;onReset:()=>Promise<void>}){
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false);
+  const [resetting,setResetting]=useState(false);
+  const confirmReset=()=>Alert.alert('Tout remettre à zéro ?','Tes connaissances, séances, révisions, statistiques et choix de programme seront effacés. Ton compte et les pages du Coran seront conservés. Cette action ne peut pas être annulée.',[
+    {text:'Annuler',style:'cancel'},
+    {text:'Tout remettre à zéro',style:'destructive',onPress:()=>{setResetting(true);onReset().catch((e:any)=>setNotice(`Réinitialisation impossible : ${e.message}`)).finally(()=>setResetting(false));}},
+  ]);
   const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){update(remote);setNotice('Tes données ont été retrouvées.');}else{await pushState(state);setNotice(register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{setBusy(false);}};
   return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon profil</Title><Label style={{color:colors.muted}}>Tes préférences et tes données</Label></View>
     <Card><Label style={{fontWeight:'700'}}>Connaissances</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Modifier les sourates, juz’, hizb et passages déjà appris.</Label><Button secondary onPress={openKnowledge}>Modifier mes connaissances</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Objectif et rythme</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>{state.goal.label} · {paceLabels[state.pace]}</Label><Button secondary onPress={openGoal}>Modifier mon programme</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button></>}</Card>
+    <Card><Label style={{fontWeight:'700'}}>Réglages</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Tout remettre à zéro</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
   </>;
 }
@@ -181,7 +195,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
         {(kind==='hizb'||kind==='custom')&&<>{section('Sélectionne les hizb')}{hizbs.map(h=><Choice key={h.number} label={`Hizb ${h.number}`} selected={selectedHizb.includes(h.number)} onPress={()=>toggle(selectedHizb,h.number,setSelectedHizb)} />)}</>}
         {kind==='custom'&&<>{section('Sourates')}{surahs.map(s=><Choice key={s.number} label={`${s.number}. ${s.name}`} selected={selectedSurahs.includes(s.number)} onPress={()=>toggle(selectedSurahs,s.number,setSelectedSurahs)} />)}{section('Passage précis')}<Field value={customSurah} onChangeText={setCustomSurah} placeholder="Numéro de sourate" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={customStart} onChangeText={setCustomStart} placeholder="Verset début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={customEnd} onChangeText={setCustomEnd} placeholder="Verset fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(true)}>Ajouter le passage</Button>{customRanges.map((r,i)=><Label key={i}>{reference(r)}</Label>)}</>}
       </>}
-      {step===2&&<><Label style={{color:colors.muted,marginBottom:12}}>Une séance chaque jour sélectionné. Les unités ci-dessous ont des limites Hafs vérifiées. La demi-page suit le volume du texte sur la page.</Label>{(Object.keys(paceLabels) as Pace[]).map(p=><Choice key={p} label={paceLabels[p]} selected={state.pace===p} onPress={()=>update(touch({...state,pace:p}))} />)}<Card><Label style={{color:colors.muted,fontSize:13}}>Les toumoun ne sont pas proposés : leurs 480 limites en Hafs ne sont pas encore vérifiées.</Label></Card></>}
+      {step===2&&<><Label style={{color:colors.muted,marginBottom:12}}>Une séance chaque jour sélectionné. Les unités ci-dessous ont des limites Hafs vérifiées. La demi-page suit le volume du texte sur la page.</Label>{availablePaces.map(p=><Choice key={p} label={paceLabels[p]} selected={state.pace===p} onPress={()=>update(touch({...state,pace:p}))} />)}{!verifiedToumouns&&<Card><Label style={{color:colors.muted,fontSize:13}}>Les 480 toumoun attendent une source Hafs vérifiée pour leurs limites exactes. Ce rythme sera disponible dès que ces données seront ajoutées.</Label></Card>}</>}
       {step===3&&<><Label style={{color:colors.muted,marginBottom:12}}>Les jours non sélectionnés restent libres pour les révisions.</Label>{[1,2,3,4,5,6,0].map(d=><Choice key={d} label={weekdays[d]} selected={state.learningDays.includes(d)} onPress={()=>update(touch({...state,learningDays:state.learningDays.includes(d)?state.learningDays.filter(x=>x!==d):[...state.learningDays,d]}))} />)}</>}
       {!!error&&<Label style={{color:colors.red,marginVertical:10}}>{error}</Label>}
     </ScrollView>
@@ -191,6 +205,11 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
 
 function ReaderScreen({reader,page,setPage,masked,setMasked,revealed,setRevealed,onClose,state,update}:{reader:Reader;page:number;setPage:(n:number)=>void;masked:boolean;setMasked:(v:boolean)=>void;revealed:number|null;setRevealed:(n:number|null)=>void;onClose:()=>void;state:AppState;update:(s:AppState)=>void}){
   const {width}=useWindowDimensions();const imageWidth=Math.min(width-28,600),imageHeight=imageWidth*3106/1920;
+  const swipe=useMemo(()=>PanResponder.create({
+    onMoveShouldSetPanResponder:(_,gesture)=>Math.abs(gesture.dx)>18&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.5,
+    onPanResponderTerminationRequest:()=>false,
+    onPanResponderRelease:(_,gesture)=>{const next=pageAfterSwipe(page,gesture.dx,gesture.dy);if(next!==page){setPage(next);setRevealed(null);}},
+  }),[page,setPage,setRevealed]);
   const from=pageOf(reader.range.start),to=pageOf(reader.range.end);
   const bounds=(boundsRaw as Record<string,number[][]>)[String(page)]||[];
   const targetVerses=Array.from({length:reader.range.end-reader.range.start+1},(_,i)=>reader.range.start+i);
@@ -201,10 +220,11 @@ function ReaderScreen({reader,page,setPage,masked,setMasked,revealed,setRevealed
   return <><View style={{paddingHorizontal:18,paddingBottom:8,flexDirection:'row',alignItems:'center',gap:10}}><Pressable onPress={onClose} style={{padding:8}}><Label style={{fontSize:22}}>‹</Label></Pressable><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{reader.sessionId?'Séance du jour':reader.revisionId?'Révision':'Le Coran'}</Label><Label style={{color:colors.muted,fontSize:12}}>{reference(reader.range)}</Label></View><Label style={{color:colors.gold,fontSize:13}}>HAFS</Label></View>
     <ScrollView contentContainerStyle={{alignItems:'center',paddingBottom:25}}>
       <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',width:imageWidth,marginBottom:7}}><Pressable onPress={()=>{setPage(Math.min(604,page+1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>‹</Label></Pressable><Label style={{fontSize:13,color:colors.muted}}>Page {page} / 604 {reader.sessionId||reader.revisionId?`· passage pages ${from}–${to}`:''}</Label><Pressable onPress={()=>{setPage(Math.max(1,page-1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>›</Label></Pressable></View>
-      {masked?<View style={{width:imageWidth,height:imageHeight,backgroundColor:'#FFFDF4',borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:20,alignItems:'center',justifyContent:'center'}}><Label style={{color:colors.gold,fontSize:25}}>۞</Label><Label style={{color:colors.muted,textAlign:'center',marginTop:14}}>Récite les versets de mémoire.</Label>{revealed!==null&&visible.includes(revealed)&&<Label style={{fontSize:25,lineHeight:48,textAlign:'center',writingDirection:'rtl',marginTop:25}}>{verseAt(revealed).text} ۞</Label>}</View>:
+      <View {...swipe.panHandlers} style={{width:imageWidth,height:imageHeight}}>{masked?<View style={{width:imageWidth,height:imageHeight,backgroundColor:'#FFFDF4',borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:20,alignItems:'center',justifyContent:'center'}}><Label style={{color:colors.gold,fontSize:25}}>۞</Label><Label style={{color:colors.muted,textAlign:'center',marginTop:14}}>Récite les versets de mémoire.</Label>{revealed!==null&&visible.includes(revealed)&&<Label style={{fontSize:25,lineHeight:48,textAlign:'center',writingDirection:'rtl',marginTop:25}}>{verseAt(revealed).text} ۞</Label>}</View>:
         <View style={{width:imageWidth,height:imageHeight,backgroundColor:'white',borderWidth:2,borderColor:colors.beige,borderRadius:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}><Image source={mushafImages[page]} style={{width:imageWidth-4,height:imageHeight-4}} resizeMode="stretch" />
           {(reader.sessionId||reader.revisionId)&&bounds.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&id>=reader.range.start&&id<=reader.range.end;}).map((row,i)=><View key={i} pointerEvents="none" style={{position:'absolute',left:row[3]/1920*(imageWidth-4),top:row[5]/3106*(imageHeight-4),width:(row[4]-row[3])/1920*(imageWidth-4),height:(row[6]-row[5])/3106*(imageHeight-4),backgroundColor:'rgba(179,149,89,0.19)',borderRadius:4}} />)}
-        </View>}
+        </View>}</View>
+      <Label style={{color:colors.muted,fontSize:12,marginTop:8}}>Glisse la page à gauche ou à droite pour la tourner.</Label>
       <View style={{width:imageWidth,marginTop:12}}><Button secondary onPress={()=>{setMasked(!masked);setRevealed(null);}}>{masked?'Voir la page':'Masquer les versets pour réciter'}</Button>{masked&&<Button onPress={()=>setRevealed(nextReveal??visible[0]??null)}>Afficher le verset</Button>}</View>
       {reader.sessionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Après ma séance')}<Button onPress={()=>validate('done')}>J’ai mémorisé ce passage</Button><Button secondary onPress={()=>validate('work')}>Je dois encore le travailler</Button><Button secondary onPress={()=>validate('postpone')}>Reporter cette séance</Button></View>}
       {reader.revisionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Comment s’est passée la révision ?')}<Button onPress={()=>grade('perfect')}>Parfait, sans regarder</Button><Button secondary onPress={()=>grade('hesitant')}>Quelques hésitations</Button><Button secondary onPress={()=>grade('errors')}>Plusieurs erreurs</Button><Button secondary onPress={()=>grade('relearn')}>À réapprendre</Button></View>}

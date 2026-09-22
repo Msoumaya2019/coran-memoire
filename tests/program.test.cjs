@@ -2,7 +2,9 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const p=require('./build/core/program.js');
 const q=require('./build/core/quran.js');
+const nav=require('./build/core/pageNavigation.js');
 const toumoun=require('../src/data/toumoun.json');
+const t=require('./build/core/toumoun.js');
 const monday='2026-09-21';
 
 test('un nouveau téléphone récupère la sauvegarde distante avant tout progrès local',()=>{
@@ -10,6 +12,40 @@ test('un nouveau téléphone récupère la sauvegarde distante avant tout progr�
   assert.equal(fresh.updatedAt,'1970-01-01T00:00:00.000Z');
   assert.equal(fresh.onboardingDone,false);
   assert(new Date(fresh.updatedAt)<new Date('2026-01-01T00:00:00.000Z'));
+});
+
+test('la remise à zéro efface apprentissage et révisions et relance le questionnaire',()=>{
+  let state=p.defaultState();
+  state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
+  state=p.markKnowledge(state,{start:6231,end:6236},'perfect');
+  state=p.generateProgram({...state,onboardingDone:true},monday,3);
+  state=p.seedInitialRevisions(state,monday);
+  assert(Object.keys(state.knowledge).length>0&&state.sessions.length>0&&state.revisions.length>0);
+  const reset=p.resetAllProgress();
+  assert.equal(reset.onboardingDone,false);
+  assert.deepEqual(reset.knowledge,{});
+  assert.deepEqual(reset.sessions,[]);
+  assert.deepEqual(reset.revisions,[]);
+  assert.equal(p.progress(reset).quran,0);
+  assert.equal(p.stats(reset,monday).revisions,0);
+  assert(reset.updatedAt>=state.updatedAt);
+});
+
+test('les gestes horizontaux tournent une page et le défilement vertical est ignoré',()=>{
+  assert.equal(nav.pageAfterSwipe(120,-90,8),121);
+  assert.equal(nav.pageAfterSwipe(120,90,8),119);
+  assert.equal(nav.pageAfterSwipe(120,25,8),120);
+  assert.equal(nav.pageAfterSwipe(120,-90,100),120);
+  assert.equal(nav.pageAfterSwipe(1,90,5),1);
+  assert.equal(nav.pageAfterSwipe(604,-90,5),604);
+});
+
+test('le rythme toumoun exige 480 limites Hafs vérifiées et contiguës',()=>{
+  assert.equal(t.verifiedToumounRanges(),null);
+  assert.equal(p.availablePaces.includes('toumoun'),false);
+  const fake=toumoun.map(x=>({...x,verificationStatus:'verified_hafs',source:'Qaloun'}));
+  assert.equal(t.verifiedToumounRanges(fake),null);
+  assert.throws(()=>p.generateProgram({...p.defaultState(),pace:'toumoun'},monday,2),/limites Hafs/);
 });
 
 test('corpus Hafs et limites officielles cohérents',()=>{

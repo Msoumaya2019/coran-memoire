@@ -25,9 +25,14 @@ export async function pullState():Promise<AppState|null>{
   if(error)throw error;
   return data?.data as AppState|null;
 }
-export async function pushState(state:AppState):Promise<void>{
-  if(!supabase)return;
-  const user=await currentUser();if(!user)return;
-  const {error}=await supabase.from('user_state').upsert({user_id:user.id,data:state,updated_at:state.updatedAt});
-  if(error)throw error;
+let pendingPush:Promise<void>=Promise.resolve();
+export function pushState(state:AppState):Promise<void>{
+  const next=pendingPush.catch(()=>{}).then(async()=>{
+    if(!supabase)return;
+    const user=await currentUser();if(!user)throw new Error('Connecte-toi pour synchroniser tes données.');
+    const {error}=await supabase.from('user_state').upsert({user_id:user.id,data:state,updated_at:state.updatedAt});
+    if(error)throw error;
+  });
+  pendingPush=next;
+  return next;
 }
