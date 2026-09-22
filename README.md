@@ -42,7 +42,7 @@ Le modèle de synchronisation est « dernière modification gagnante » lors de 
 
 ## APK et IPA
 
-Le workflow **Actions → IPA iPhone non signé → Run workflow** compile l’application sur un runner macOS GitHub, désactive la signature Xcode et met `coran-memoire-unsigned.ipa` dans les artefacts du run. Il ne demande ni compte Expo ni certificat Apple pour *compiler*. Cette IPA devra ensuite être signée dans eSign avec un certificat et un profil compatibles avec l’identifiant `fr.coranmemoire.app` avant installation. La procédure de compilation iOS est préparée, mais ne peut être validée qu’après son premier run GitHub.
+Le workflow **Actions → IPA iPhone non signé → Run workflow** compile l’application sur un runner macOS GitHub, désactive la signature Xcode et met `coran-memoire-unsigned.ipa` dans les artefacts du run. Il ne demande ni compte Expo ni certificat Apple pour *compiler*. Cette IPA devra ensuite être signée dans eSign avec un certificat et un profil compatibles avec l’identifiant `fr.coranmemoire.app` avant installation. Le premier [run GitHub](https://github.com/Msoumaya2019/coran-memoire/actions/runs/35747817559) a réussi ; son archive contient les 604 pages et aucune signature.
 
 Le workflow **Actions → Vérifier et compiler → Run workflow** construit l’APK Android avec Expo EAS Build. Préparation du propriétaire du compte :
 
@@ -55,4 +55,4 @@ Ne mettre aucun certificat, mot de passe ou profil privé dans GitHub.
 
 ## Vérifications effectuées
 
-Le contrôle TypeScript et cinq tests du moteur passent. Les exports Metro Android et iOS ont été générés, chacun avec les 604 pages. Il reste à exécuter une installation réelle sur iPhone et Android et le premier run de la compilation iOS GitHub. La compilation APK locale sous Windows a rencontré une limite de longueur de chemin pendant la phase CMake ; le workflow EAS Android est prêt.
+Le contrôle TypeScript et cinq tests du moteur passent. Les exports Metro Android et iOS ont été générés, chacun avec les 604 pages. L’APK Android a été compilé localement dans un chemin court et sa signature APK v2 a été vérifiée. L’IPA iOS non signée a été compilée par GitHub et son archive ZIP, son identifiant iOS et ses 604 images ont été contrôlés. L’installation réelle sur iPhone et Android reste à valider sur des appareils physiques. Le workflow EAS Android est également prêt pour les prochaines compilations.
