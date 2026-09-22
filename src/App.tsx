@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
 import { Button, Card, Choice, colors, Field, Label, Title } from './ui/theme';
 import { AppState, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, markKnowledge, Mastery, Pace, paceLabels, postponeSession, progress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
@@ -93,16 +93,20 @@ function ProgramScreen({state,update,openReader,openWizard}:{state:AppState;upda
 function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;allDone:number}){
   const [view,setView]=useState<'Jour'|'Semaine'|'Mois'>('Semaine');
   const today=todayLocal();
-  const values=Array.from({length:view==='Jour'?7:view==='Semaine'?7:6},(_,i)=>{
-    const d=new Date(`${today}T12:00:00`);d.setDate(d.getDate()-(view==='Mois'?(5-i)*5:6-i));const key=dateKey(d);
-    const done=state.sessions.filter(s=>s.status==='done'&&(s.completedDate??s.completedAt?.slice(0,10))===key);
-    return {label:view==='Mois'?`${d.getDate()}`:weekdays[d.getDay()].slice(0,2),value:done.reduce((n,s)=>n+s.end-s.start+1,0)};
-  });
+  const completed=state.sessions.filter(s=>s.status==='done'&&s.completedAt);
+  const count=(predicate:(s:Session)=>boolean)=>completed.filter(predicate).reduce((n,s)=>n+s.end-s.start+1,0);
+  const localDate=(s:Session)=>s.completedDate??s.completedAt!.slice(0,10);
+  const monday=(()=>{const d=new Date(`${today}T12:00:00`);d.setDate(d.getDate()-((d.getDay()+6)%7));return dateKey(d);})();
+  const values=view==='Jour'
+    ?Array.from({length:6},(_,i)=>({label:`${i*4}h`,value:count(s=>localDate(s)===today&&Math.floor(new Date(s.completedAt!).getHours()/4)===i)}))
+    :view==='Semaine'
+      ?Array.from({length:7},(_,i)=>{const d=new Date(`${monday}T12:00:00`);d.setDate(d.getDate()+i);const key=dateKey(d);return {label:weekdays[d.getDay()].slice(0,2),value:count(s=>localDate(s)===key)};})
+      :Array.from({length:5},(_,i)=>({label:`${i*7+1}–${Math.min((i+1)*7,new Date(Number(today.slice(0,4)),Number(today.slice(5,7)),0).getDate())}`,value:count(s=>localDate(s).slice(0,7)===today.slice(0,7)&&Number(localDate(s).slice(8,10))>=i*7+1&&Number(localDate(s).slice(8,10))<=(i+1)*7)}));
   const max=Math.max(1,...values.map(v=>v.value));
   return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Ma progression</Title><Label style={{color:colors.muted}}>Chaque verset validé compte une seule fois.</Label></View>
     <View style={{flexDirection:'row',gap:8,marginBottom:12}}>{(['Jour','Semaine','Mois'] as const).map(v=><View key={v} style={{flex:1}}><Button small secondary={view!==v} onPress={()=>setView(v)}>{v.toUpperCase()}</Button></View>)}</View>
     <Card><Label style={{color:colors.muted,fontSize:13}}>CORAN MÉMORISÉ</Label><Label style={{fontSize:32,fontWeight:'700',color:colors.green}}>{percent(prog.quran)}</Label><Label style={{color:colors.muted,marginTop:8,fontSize:13}}>OBJECTIF ATTEINT</Label><Label style={{fontSize:27,fontWeight:'700',color:colors.green}}>{percent(prog.goal)}</Label></Card>
-    <Card><Label style={{fontWeight:'700',marginBottom:12}}>Versets travaillés</Label><View style={{height:110,flexDirection:'row',alignItems:'flex-end',gap:8}}>{values.map((v,i)=><View key={i} style={{flex:1,alignItems:'center'}}><View style={{height:Math.max(5,v.value/max*80),width:'72%',borderRadius:6,backgroundColor:colors.green2}} /><Label style={{fontSize:11,color:colors.muted,marginTop:5}}>{v.label}</Label></View>)}</View></Card>
+    <Card><Label style={{fontWeight:'700',marginBottom:12}}>Versets validés</Label><View style={{height:110,flexDirection:'row',alignItems:'flex-end',gap:8}}>{values.map((v,i)=><View key={i} style={{flex:1,alignItems:'center'}}><View style={{height:Math.max(5,v.value/max*80),width:'72%',borderRadius:6,backgroundColor:colors.green2}} /><Label style={{fontSize:11,color:colors.muted,marginTop:5}}>{v.label}</Label></View>)}</View></Card>
     <View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}>{[[stat.today,'versets aujourd’hui'],[stat.week,'cette semaine'],[stat.month,'ce mois'],[stat.hizbs,'hizb terminés'],[stat.days,'jours d’apprentissage'],[stat.revisions,'révisions effectuées']].map(([n,l])=><Card key={String(l)} style={{width:'48%',minHeight:95,marginBottom:0}}><Label style={{fontSize:24,fontWeight:'700',color:colors.green}}>{n}</Label><Label style={{fontSize:12,color:colors.muted}}>{l}</Label></Card>)}</View>
     {section(`Historique · ${allDone} séances`)}
     {state.sessions.filter(s=>s.status==='done').slice(-30).reverse().map(s=><Card key={s.id} style={{paddingVertical:10}}><Label style={{fontSize:12,color:colors.muted}}>{s.completedDate??s.completedAt?.slice(0,10)}</Label><Label>{reference(s)}</Label></Card>)}
@@ -116,7 +120,7 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
     <Card><Label style={{fontWeight:'700'}}>Connaissances</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Modifier les sourates, juz’, hizb et passages déjà appris.</Label><Button secondary onPress={openKnowledge}>Modifier mes connaissances</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Objectif et rythme</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>{state.goal.label} · {paceLabels[state.pace]}</Label><Button secondary onPress={openGoal}>Modifier mon programme</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button></>}</Card>
-    <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, CC BY 3.0. Pages du mushaf Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
+    <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
   </>;
 }
 
