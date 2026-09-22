@@ -3,7 +3,7 @@ import { expand, hizbs, normalizeRanges, pageOf, pageRange, quarters, halves, Ra
 export type Mastery = 'perfect' | 'review' | 'learning';
 export type Pace = 'verse3' | 'verse5' | 'halfPage' | 'page' | 'quarter' | 'halfHizb' | 'hizb';
 export type SessionStatus = 'todo' | 'done' | 'postponed';
-export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string };
+export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
 export type Goal = { label: string; ranges: Range[] };
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
@@ -94,7 +94,7 @@ export function completeSession(state: AppState,id:string,memorized:boolean,from
   const updated=markKnowledge(state,session,'perfect');
   const revisions=updated.revisions.filter(r=>r.end<session.start||r.start>session.end);
   revisions.push({id:`r-${session.start}-${session.end}`,start:session.start,end:session.end,due:addDays(from,1),interval:1,streak:0,completedCount:0});
-  const sessions=updated.sessions.map(s=>s.id===id?{...s,status:'done' as SessionStatus,completedAt:new Date().toISOString()}:s);
+  const sessions=updated.sessions.map(s=>s.id===id?{...s,status:'done' as SessionStatus,completedAt:new Date().toISOString(),completedDate:from}:s);
   return generateProgram({...updated,sessions,revisions},from);
 }
 export function gradeRevision(state:AppState,id:string,grade:'perfect'|'hesitant'|'errors'|'relearn',from=todayLocal()):AppState {
@@ -115,6 +115,7 @@ export function completedHizbs(state:AppState):number {const known=new Set(memor
 export function stats(state:AppState,at=todayLocal()) {
   const done=state.sessions.filter(s=>s.status==='done'&&s.completedAt);
   const date=new Date(`${at}T12:00:00`);const weekStart=addDays(at,-((date.getDay()+6)%7));const monthStart=`${at.slice(0,7)}-01`;
-  const count=(start:string)=>done.filter(s=>s.completedAt!.slice(0,10)>=start&&s.completedAt!.slice(0,10)<=at).reduce((n,s)=>n+s.end-s.start+1,0);
-  return {today:count(at),week:count(weekStart),month:count(monthStart),days:new Set(done.map(s=>s.completedAt!.slice(0,10))).size,revisions:state.revisions.reduce((n,r)=>n+r.completedCount,0),hizbs:completedHizbs(state),weeklySessions:done.filter(s=>s.completedAt!.slice(0,10)>=weekStart).length};
+  const dateOf=(s:Session)=>s.completedDate??s.completedAt!.slice(0,10);
+  const count=(start:string)=>done.filter(s=>dateOf(s)>=start&&dateOf(s)<=at).reduce((n,s)=>n+s.end-s.start+1,0);
+  return {today:count(at),week:count(weekStart),month:count(monthStart),days:new Set(done.map(dateOf)).size,revisions:state.revisions.reduce((n,r)=>n+r.completedCount,0),hizbs:completedHizbs(state),weeklySessions:done.filter(s=>dateOf(s)>=weekStart).length};
 }

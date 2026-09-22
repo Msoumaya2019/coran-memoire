@@ -95,7 +95,7 @@ function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnTyp
   const today=todayLocal();
   const values=Array.from({length:view==='Jour'?7:view==='Semaine'?7:6},(_,i)=>{
     const d=new Date(`${today}T12:00:00`);d.setDate(d.getDate()-(view==='Mois'?(5-i)*5:6-i));const key=dateKey(d);
-    const done=state.sessions.filter(s=>s.status==='done'&&s.completedAt?.slice(0,10)===key);
+    const done=state.sessions.filter(s=>s.status==='done'&&(s.completedDate??s.completedAt?.slice(0,10))===key);
     return {label:view==='Mois'?`${d.getDate()}`:weekdays[d.getDay()].slice(0,2),value:done.reduce((n,s)=>n+s.end-s.start+1,0)};
   });
   const max=Math.max(1,...values.map(v=>v.value));
@@ -105,7 +105,7 @@ function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnTyp
     <Card><Label style={{fontWeight:'700',marginBottom:12}}>Versets travaillés</Label><View style={{height:110,flexDirection:'row',alignItems:'flex-end',gap:8}}>{values.map((v,i)=><View key={i} style={{flex:1,alignItems:'center'}}><View style={{height:Math.max(5,v.value/max*80),width:'72%',borderRadius:6,backgroundColor:colors.green2}} /><Label style={{fontSize:11,color:colors.muted,marginTop:5}}>{v.label}</Label></View>)}</View></Card>
     <View style={{flexDirection:'row',flexWrap:'wrap',gap:10}}>{[[stat.today,'versets aujourd’hui'],[stat.week,'cette semaine'],[stat.month,'ce mois'],[stat.hizbs,'hizb terminés'],[stat.days,'jours d’apprentissage'],[stat.revisions,'révisions effectuées']].map(([n,l])=><Card key={String(l)} style={{width:'48%',minHeight:95,marginBottom:0}}><Label style={{fontSize:24,fontWeight:'700',color:colors.green}}>{n}</Label><Label style={{fontSize:12,color:colors.muted}}>{l}</Label></Card>)}</View>
     {section(`Historique · ${allDone} séances`)}
-    {state.sessions.filter(s=>s.status==='done').slice(-30).reverse().map(s=><Card key={s.id} style={{paddingVertical:10}}><Label style={{fontSize:12,color:colors.muted}}>{s.completedAt?.slice(0,10)}</Label><Label>{reference(s)}</Label></Card>)}
+    {state.sessions.filter(s=>s.status==='done').slice(-30).reverse().map(s=><Card key={s.id} style={{paddingVertical:10}}><Label style={{fontSize:12,color:colors.muted}}>{s.completedDate??s.completedAt?.slice(0,10)}</Label><Label>{reference(s)}</Label></Card>)}
   </>;
 }
 

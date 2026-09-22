@@ -42,18 +42,17 @@ Le modèle de synchronisation est « dernière modification gagnante » lors de 
 
 ## APK et IPA
 
-`eas.json` définit un profil interne : APK Android et IPA iOS. Le workflow GitHub Actions permet de choisir Android, iOS ou les deux depuis **Actions → Vérifier et compiler → Run workflow**. Il vérifie le code et les tests avant de déclencher EAS.
+Le workflow **Actions → IPA iPhone non signé → Run workflow** compile l’application sur un runner macOS GitHub, désactive la signature Xcode et met `coran-memoire-unsigned.ipa` dans les artefacts du run. Il ne demande ni compte Expo ni certificat Apple pour *compiler*. Cette IPA devra ensuite être signée dans eSign avec un certificat et un profil compatibles avec l’identifiant `fr.coranmemoire.app` avant installation. La procédure de compilation iOS est préparée, mais ne peut être validée qu’après son premier run GitHub.
 
-Préparation du propriétaire du compte :
+Le workflow **Actions → Vérifier et compiler → Run workflow** construit l’APK Android avec Expo EAS Build. Préparation du propriétaire du compte :
 
-1. Se connecter à Expo (`eas login`), puis relier le projet avec `eas init`. Cette étape inscrit l’identifiant du projet EAS dans `app.json`.
+1. Se connecter à Expo (`eas login`), puis relier le projet avec `eas init`. Cela ajoute l’identifiant EAS à `app.json`.
 2. Dans Expo, créer un jeton personnel et l’ajouter comme secret GitHub `EXPO_TOKEN` dans **Settings → Secrets and variables → Actions**.
-3. Lancer une première compilation Android en mode interactif (`eas build -p android --profile preview`) pour enregistrer les informations de signature chez EAS.
-4. Pour iOS sur un vrai iPhone, disposer d’un compte Apple Developer, enregistrer l’appareil (`eas device:create`) et lancer une première compilation iOS interactive (`eas build -p ios --profile preview`) afin de créer le certificat de distribution et le profil ad hoc. EAS conserve ensuite ces éléments ; ne pas les mettre dans GitHub.
-5. Une fois ces identifiants préparés, le workflow peut construire sans interaction. Aucun envoi aux stores n’est configuré.
+3. Lancer une première compilation Android interactive (`eas build -p android --profile preview`) pour enregistrer la signature chez EAS.
+4. Lancer ensuite le workflow Android. Aucun envoi aux stores n’est configuré.
 
-Une IPA iOS destinée à un appareil doit être signée avec un certificat et un profil valides ; une IPA non signée ne s’installe pas simplement sur un iPhone. Le dépôt ne contient ni certificat ni mot de passe.
+Ne mettre aucun certificat, mot de passe ou profil privé dans GitHub.
 
 ## Vérifications effectuées
 
-Le contrôle TypeScript et cinq tests du moteur passent. Les exports Metro Android et iOS ont été générés, chacun avec les 604 pages. Il reste à exécuter une installation réelle sur iPhone et Android, et à lancer les builds EAS avec les comptes Expo/Apple du propriétaire.
+Le contrôle TypeScript et cinq tests du moteur passent. Les exports Metro Android et iOS ont été générés, chacun avec les 604 pages. Il reste à exécuter une installation réelle sur iPhone et Android et le premier run de la compilation iOS GitHub. La compilation APK locale sous Windows a rencontré une limite de longueur de chemin pendant la phase CMake ; le workflow EAS Android est prêt.
