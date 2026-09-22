@@ -33,10 +33,12 @@ Ouvrir l’application dans Expo Go sur iPhone ou Android pour une première ins
 
 ## Synchronisation privée
 
-1. Créer un projet Supabase.
+1. Utiliser le projet Supabase `npbwnvrqmajwqtnncuyv`.
 2. Dans **SQL Editor**, exécuter `supabase/schema.sql`. La table `user_state` est protégée par Row Level Security et chaque utilisateur ne peut accéder qu’à sa propre ligne.
 3. Copier `.env.example` vers `.env`, puis renseigner l’URL du projet et la **clé publique publishable/anon**. Ne jamais utiliser la clé `service_role` dans l’application.
 4. Pour les compilations EAS, ajouter ces mêmes variables publiques à l’environnement EAS du projet. La sauvegarde locale fonctionne même sans Supabase.
+
+Pour l’IPA compilée par GitHub, renseigner dans **Settings → Secrets and variables → Actions → Variables** les variables `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY`. Le workflow les transmet au bundler Expo. La clé doit être de type **publishable/anon**, jamais `service_role`.
 
 Le modèle de synchronisation est « dernière modification gagnante » lors de la connexion ou des modifications. Une modification simultanée sur deux téléphones peut écraser l’autre ; une résolution fine des conflits reste à ajouter.
 
