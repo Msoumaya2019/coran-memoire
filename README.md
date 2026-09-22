@@ -46,6 +46,8 @@ Le modèle de synchronisation est « dernière modification gagnante » lors de 
 
 Le workflow **Actions → IPA iPhone non signé → Run workflow** compile l’application sur un runner macOS GitHub, désactive la signature Xcode et met `coran-memoire-unsigned.ipa` dans les artefacts du run. Il ne demande ni compte Expo ni certificat Apple pour *compiler*. Cette IPA devra ensuite être signée dans eSign avec un certificat et un profil compatibles avec l’identifiant `fr.coranmemoire.app` avant installation. Le [dernier run GitHub](https://github.com/Msoumaya2019/coran-memoire/actions/runs/35749200458) a réussi ; son archive contient les 604 pages et aucune signature.
 
+Le workflow **Actions → APK Android autonome → Run workflow** compile aussi un APK installable depuis GitHub, signé avec la clé Android de développement générée par Expo. Il intègre les variables Supabase publiques du dépôt. Cette clé de développement sert aux essais ; pour une distribution durable et les mises à jour, utiliser une clé de publication stable via EAS.
+
 Le workflow **Actions → Vérifier et compiler → Run workflow** construit l’APK Android avec Expo EAS Build. Préparation du propriétaire du compte :
 
 1. Se connecter à Expo (`eas login`), puis relier le projet avec `eas init`. Cela ajoute l’identifiant EAS à `app.json`.
