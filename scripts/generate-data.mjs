@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import * as q from 'quran-meta/hafs';
+import {surahNamesFr} from 'quran-meta/i18n';
+const verseIds = Array.from({length: 114}, (_,i) => q.findAyahIdBySurah(i+1,1));
+const surahs = Array.from({length:114},(_,i)=> {const s=i+1; const info=q.getSurahInfo(s);return {number:s,name:surahNamesFr[s][0],meaning:surahNamesFr[s][1],arabic:info[4],start:verseIds[i],end:s===114?6236:verseIds[i+1]-1,count:info[1]};});
+const startsToRanges=(list,count)=>Array.from({length:count},(_,i)=>({number:i+1,start:list[i+1],end:list[i+2]-1}));
+const meta={surahs,juzs:startsToRanges(q.JuzList,30),quarters:startsToRanges(q.HizbQuarterList,240)};
+fs.writeFileSync('src/data/meta.json',JSON.stringify(meta));
+const toumoun=Array.from({length:480},(_,i)=>({number:i+1,hizb:Math.floor(i/8)+1,rub:Math.floor(i/2)+1,startSurah:null,startAyah:null,endSurah:null,endAyah:null,source:null,verificationStatus:'missing_hafs_reference'}));
+fs.writeFileSync('src/data/toumoun.json',JSON.stringify(toumoun,null,2));
+fs.writeFileSync('src/data/mushafImages.ts','export const mushafImages: Record<number, number> = {\n'+Array.from({length:604},(_,i)=>`  ${i+1}: require('../../assets/mushaf/page${String(i+1).padStart(3,'0')}.png'),`).join('\n')+'\n};\n');
+console.log(meta.surahs.length,meta.juzs.length,meta.quarters.length,toumoun.length,meta.juzs[29]);

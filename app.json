@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Mon Coran Mémoire",
+    "slug": "coran-memoire",
+    "scheme": "coranmemoire",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.coranmemoire.app"},
+    "android": {"package": "fr.coranmemoire.app"},
+    "plugins": ["expo-sqlite"]
+  }
+}
