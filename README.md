@@ -13,6 +13,7 @@ L’icône de l’application provient de l’image fournie par le propriétaire
 - Révisions espacées indépendantes du nouvel apprentissage.
 - Statistiques calculées avec un poids commun fondé sur les lettres des versets mémorisés ; une même plage n’est comptée qu’une fois.
 - Compte et synchronisation Supabase facultatifs, avec règles d’accès par utilisateur.
+- Espace amis avec code d’invitation, acceptation, suivi partagé, présence en ligne, messagerie libre, signalements, cercles privés, objectifs communs et rendez-vous de révision. Le compte administrateur dispose d’une file de signalements, peut consulter les messages récents, retirer un message et suspendre ou rétablir la messagerie d’un membre. Le rôle est contrôlé dans Supabase.
 - Remise à zéro de l’apprentissage, des révisions et de l’historique depuis Réglages, avec synchronisation du nouvel état au compte connecté.
 - 480 entrées de toumoun dans `src/data/toumoun.json` **sans limites de versets** : une source fiable vérifiant les limites en Hafs reste à établir. Le moteur accepte ce rythme uniquement si les 480 entrées sont sourcées, vérifiées et contiguës. Il est actuellement indisponible. Les rub‘, nisf, hizb et juz’ proviennent des métadonnées Hafs de Quran Meta.
 
@@ -43,6 +44,16 @@ Ouvrir l’application dans Expo Go sur iPhone ou Android pour une première ins
 2. Dans **SQL Editor**, exécuter `supabase/schema.sql`. La table `user_state` est protégée par Row Level Security et chaque utilisateur ne peut accéder qu’à sa propre ligne.
 3. Copier `.env.example` vers `.env`, puis renseigner l’URL du projet et la **clé publique publishable/anon**. Ne jamais utiliser la clé `service_role` dans l’application.
 4. Pour les compilations EAS, ajouter ces mêmes variables publiques à l’environnement EAS du projet. La sauvegarde locale fonctionne même sans Supabase.
+
+Pour activer les amis et la modération, exécuter ensuite `supabase/social.sql` dans **SQL Editor**. Le script crée les tables et fonctions avec RLS. Il ne donne accès à aucun compte administrateur à lui seul. Dans un second passage du SQL Editor, attribuer le rôle avec :
+
+```sql
+insert into public.app_admins(user_id)
+select id from auth.users where email = '<adresse du compte administrateur>'
+on conflict (user_id) do nothing;
+```
+
+Vérifier que cette requête a ajouté une ligne ; le compte doit déjà exister et avoir confirmé son adresse. Ne jamais ajouter son adresse ou un identifiant privé au script public. Les administrateurs peuvent consulter les messages et signalements de toutes les discussions, y compris privées ; seuls les administrateurs désignés dans `app_admins` ont ce droit. Une suspension bloque l’envoi de nouveaux messages, tout en laissant l’apprentissage disponible. Les messages supprimés gardent un marqueur et le signalement conserve l’extrait original pour le suivi de modération.
 
 Pour l’IPA compilée par GitHub, renseigner dans **Settings → Secrets and variables → Actions → Variables** les variables `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY`. Le workflow les transmet au bundler Expo. La clé doit être de type **publishable/anon**, jamais `service_role`.
 

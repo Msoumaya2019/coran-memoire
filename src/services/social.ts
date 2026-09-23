@@ -1,0 +1,131 @@
+import { AppState, progress, stats, todayLocal } from '../core/program';
+import { currentUser, supabase } from './sync';
+
+export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean};
+export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:FriendProfile};
+export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
+export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
+export type GroupMember={group_id:string;user_id:string;role:'owner'|'moderator'|'member';accepted_at:string|null;invited_by:string|null;profile?:FriendProfile};
+export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement';body:string;created_at:string;deleted_at:string|null};
+export type MessageReport={id:string;message_id:string;reason:string;reporter_id:string;excerpt:string;status:'open'|'reviewed';created_at:string};
+export type SocialSuspension={user_id:string;reason:string;suspended_until:string|null;created_at:string};
+export type SharedGoal={id:string;link_id:string;week_start:string;target_sessions:number;proposed_by:string;accepted_at:string|null};
+export type ReviewAppointment={id:string;link_id:string;starts_at:string;proposed_by:string;accepted_at:string|null};
+
+function client(){if(!supabase)throw new Error('Connecte-toi pour utiliser les amis.');return supabase;}
+function checked<T>(response:{data:T;error:any}):T{if(response.error)throw response.error;return response.data;}
+async function rpc(name:string,args:Record<string,unknown>={}){return checked(await client().rpc(name,args));}
+
+export async function ensureSocialProfile():Promise<FriendProfile>{return await rpc('ensure_social_profile') as FriendProfile;}
+export async function mySocialProfile():Promise<FriendProfile>{
+  const user=await currentUser();if(!user)throw new Error('Connecte-toi pour utiliser les amis.');
+  return checked(await client().from('friend_profiles').select('*').eq('id',user.id).single()) as FriendProfile;
+}
+export async function updateSocialProfile(values:Pick<FriendProfile,'display_name'|'share_online'|'share_location'>){
+  const user=await currentUser();if(!user)throw new Error('Connexion requise');
+  checked(await client().from('friend_profiles').update(values).eq('id',user.id));
+}
+export async function listFriendLinks():Promise<FriendLink[]>{
+  const user=await currentUser();if(!user)return [];
+  const links=checked(await client().from('friend_links').select('*').order('created_at',{ascending:false})) as FriendLink[];
+  const ids=links.map(link=>link.requester_id===user.id?link.recipient_id:link.requester_id);
+  if(!ids.length)return links;
+  const profiles=checked(await client().from('friend_profiles').select('*').in('id',ids)) as FriendProfile[];
+  const byId=new Map(profiles.map(p=>[p.id,p]));
+  return links.map(link=>({...link,other:byId.get(link.requester_id===user.id?link.recipient_id:link.requester_id)}));
+}
+export async function sendFriendRequest(code:string){await rpc('request_friend',{p_code:code});}
+export async function acceptFriend(id:string){await rpc('accept_friend',{p_link:id});}
+export async function declineFriend(id:string){await rpc('decline_friend',{p_link:id});}
+export async function removeFriend(id:string){await rpc('remove_friend',{p_link:id});}
+export async function blockFriend(id:string){await rpc('block_friend',{p_other:id});}
+export async function unblockFriend(id:string){await rpc('unblock_friend',{p_other:id});}
+export async function friendOverview(id:string):Promise<FriendOverview>{
+  const rows=await rpc('friend_overview',{p_other:id}) as FriendOverview[];
+  if(!rows.length)throw new Error('Profil ami indisponible');
+  return rows[0];
+}
+export async function publishSocialProgress(state:AppState){
+  const summary=progress(state),weekly=stats(state,todayLocal());
+  const next=state.sessions.find(s=>s.status==='todo'&&s.date>=todayLocal());
+  await rpc('publish_social_progress',{
+    p_goal_label:state.goal.label,p_weekly_verses:weekly.week,p_weekly_sessions:weekly.weeklySessions,
+    p_goal_percent:Math.round(summary.goal*10000)/100,p_quran_percent:Math.round(summary.quran*10000)/100,
+    p_current_start:next?.start??null,p_current_end:next?.end??null,
+  });
+}
+export async function setSocialOnline(active:boolean){await rpc('set_social_online',{p_active:active});}
+
+export async function listGroups():Promise<FriendGroup[]>{return checked(await client().from('friend_groups').select('*').order('created_at',{ascending:false})) as FriendGroup[];}
+export async function listGroupMembers(groupId:string):Promise<GroupMember[]>{
+  const members=checked(await client().from('friend_group_members').select('*').eq('group_id',groupId)) as GroupMember[];
+  if(!members.length)return members;
+  const profiles=checked(await client().from('friend_profiles').select('*').in('id',members.map(m=>m.user_id))) as FriendProfile[];
+  const byId=new Map(profiles.map(p=>[p.id,p]));
+  return members.map(m=>({...m,profile:byId.get(m.user_id)}));
+}
+export async function createGroup(name:string):Promise<string>{return await rpc('create_friend_group',{p_name:name}) as string;}
+export async function inviteGroupMember(groupId:string,friendId:string){await rpc('invite_group_member',{p_group:groupId,p_friend:friendId});}
+export async function acceptGroupInvite(groupId:string){await rpc('accept_group_invite',{p_group:groupId});}
+export async function declineGroupInvite(groupId:string){await rpc('decline_group_invite',{p_group:groupId});}
+export async function setGroupModerator(groupId:string,memberId:string,enabled:boolean){await rpc('set_group_moderator',{p_group:groupId,p_member:memberId,p_enabled:enabled});}
+export async function removeGroupMember(groupId:string,memberId:string){await rpc('remove_group_member',{p_group:groupId,p_member:memberId});}
+export async function deleteGroup(groupId:string){await rpc('delete_friend_group',{p_group:groupId});}
+
+export async function listMessages(room:{linkId?:string;groupId?:string}):Promise<ChatMessage[]>{
+  let query=client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100);
+  query=room.linkId?query.eq('link_id',room.linkId):query.eq('group_id',room.groupId!);
+  return (checked(await query) as ChatMessage[]).reverse();
+}
+export async function sendMessage(room:{linkId?:string;groupId?:string},body:string,kind:'text'|'encouragement'='text'){
+  const user=await currentUser();if(!user)throw new Error('Connexion requise');
+  checked(await client().from('friend_messages').insert({link_id:room.linkId??null,group_id:room.groupId??null,sender_id:user.id,body:body.trim(),kind}));
+}
+export async function deleteMessage(id:string){await rpc('delete_friend_message',{p_message:id});}
+export async function reportMessage(id:string,reason:string){await rpc('report_friend_message',{p_message:id,p_reason:reason});}
+export async function listGroupReports(groupId:string):Promise<MessageReport[]>{
+  const messages=await listMessages({groupId});
+  if(!messages.length)return [];
+  return checked(await client().from('friend_message_reports').select('*').in('message_id',messages.map(m=>m.id)).order('created_at',{ascending:false})) as MessageReport[];
+}
+
+export async function listSharedGoals(linkId:string):Promise<SharedGoal[]>{return checked(await client().from('friend_shared_goals').select('*').eq('link_id',linkId).order('week_start',{ascending:false}).limit(8)) as SharedGoal[];}
+export async function proposeSharedGoal(linkId:string,weekStart:string,target:number){
+  const user=await currentUser();if(!user)throw new Error('Connexion requise');
+  checked(await client().from('friend_shared_goals').insert({link_id:linkId,week_start:weekStart,target_sessions:target,proposed_by:user.id}));
+}
+export async function acceptSharedGoal(id:string){await rpc('accept_shared_goal',{p_goal:id});}
+export async function listAppointments(linkId:string):Promise<ReviewAppointment[]>{return checked(await client().from('friend_review_appointments').select('*').eq('link_id',linkId).gte('starts_at',new Date().toISOString()).order('starts_at').limit(20)) as ReviewAppointment[];}
+export async function proposeAppointment(linkId:string,startsAt:string){
+  const user=await currentUser();if(!user)throw new Error('Connexion requise');
+  checked(await client().from('friend_review_appointments').insert({link_id:linkId,starts_at:startsAt,proposed_by:user.id}));
+}
+export async function acceptAppointment(id:string){await rpc('accept_review_appointment',{p_appointment:id});}
+export async function cancelAppointment(id:string){await rpc('cancel_review_appointment',{p_appointment:id});}
+
+export async function isSocialAdmin():Promise<boolean>{
+  const user=await currentUser();if(!user)return false;
+  return !!checked(await client().from('app_admins').select('user_id').eq('user_id',user.id).maybeSingle());
+}
+export async function mySocialSuspension():Promise<SocialSuspension|null>{
+  const user=await currentUser();if(!user)return null;
+  return checked(await client().from('social_suspensions').select('*').eq('user_id',user.id).maybeSingle()) as SocialSuspension|null;
+}
+export async function listAdminReports():Promise<MessageReport[]>{
+  return checked(await client().from('friend_message_reports').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100)) as MessageReport[];
+}
+export async function listAdminMessages():Promise<ChatMessage[]>{
+  return checked(await client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100)) as ChatMessage[];
+}
+export async function adminProfiles(ids:string[]):Promise<FriendProfile[]>{
+  if(!ids.length)return [];
+  return checked(await client().from('friend_profiles').select('*').in('id',[...new Set(ids)])) as FriendProfile[];
+}
+export async function listSocialSuspensions():Promise<SocialSuspension[]>{
+  return checked(await client().from('social_suspensions').select('*').order('created_at',{ascending:false})) as SocialSuspension[];
+}
+export async function resolveReport(id:string){await rpc('resolve_friend_report',{p_report:id});}
+export async function suspendMember(userId:string,reason:string,until:string|null){
+  await rpc('suspend_social_member',{p_user:userId,p_reason:reason,p_until:until});
+}
+export async function unsuspendMember(userId:string){await rpc('unsuspend_social_member',{p_user:userId});}

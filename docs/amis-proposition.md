@@ -1,6 +1,6 @@
 # Proposition : apprendre avec des amis
 
-Cette fonction est une proposition à valider ; elle n'est pas encore développée.
+Cette proposition a été retenue. Les écrans et le schéma Supabase sont présents dans le code. Leur mise en service demande l’exécution de `supabase/social.sql` et une vérification avec plusieurs comptes.
 
 ## Fonctionnement proposé
 
