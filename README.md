@@ -10,6 +10,9 @@ L’icône de l’application provient de l’image fournie par le propriétaire
 - Trois niveaux de rythme : Débutant (1 à 5 versets par séance), Intermédiaire (une demi-page) et Intensif (1 page, 2 pages ou 1 rub‘). Une séance quotidienne est possible en sélectionnant les sept jours.
 - Programme durable dans SQLite : passages connus exclus, historique conservé lors des recalculs, report des séances. Pour l’objectif « Tout le Coran », choix entre commencer par Al-Fatiha ou par An-Nâs, puis parcourir les sourates précédentes en gardant les versets de chaque sourate dans leur ordre.
 - Lecteur page par page du mushaf Hafs 1405, avec glissement horizontal dans les deux sens, repères visuels des versets de la séance et mode récitation masqué.
+- Lecteur audio flottant à trois positions, sélection des versets et de la page, répétitions du passage ou de chaque verset, et réglages secondaires repliés. La récitation reste active quand le panneau est réduit ou masqué.
+- Affichage Tajweed textuel Hafs, traduction française du sens des versets, accès rapide FR / عربي, plein écran et appui long sur les zones de versets identifiées. Le changement d'affichage conserve le verset, la page et l'audio.
+- Les objectifs entièrement connus ne sont plus proposés à l'inscription. Les choix multiples montrent des cases carrées roses. La date estimée de fin de l'objectif affiche le jour, le mois et l'année.
 - Révisions espacées indépendantes du nouvel apprentissage.
 - Rappels locaux hebdomadaires à 19 h les jours d’apprentissage choisis, avec le hadith cité dans l’application. Réglages indépendants pour les rappels et les messages privés.
 - Notifications push des nouveaux messages privés déclenchées dans Supabase, avec ouverture de la conversation et suppression de l’alerte lorsque celle-ci est déjà ouverte au premier plan.
@@ -23,6 +26,8 @@ L’icône de l’application provient de l’image fournie par le propriétaire
 ## Sources coraniques
 
 Le texte arabe vocalisé provient de Tanzil, version Uthmani Hafs, repris sans modification des versets depuis le miroir documenté `dotquran/corpus`. Voir `src/data/TANZIL-LICENSE.txt` et [Tanzil](https://tanzil.net/docs/Text_License). `src/data/verses.json` contient exactement 6 236 versets.
+
+Le second affichage utilise la copie Tanzil 2017 et les annotations Tajweed Hafs [cpfair](https://github.com/cpfair/quran-tajweed), sous CC BY 4.0. La traduction française du sens est celle de Rachid Maach, publiée par [QuranEnc](https://quranenc.com/fr/browse/french_rashid). Les textes, les sources et les précautions de mise à jour sont détaillés dans [READER_DATA_SOURCES.md](READER_DATA_SOURCES.md).
 
 Les 604 images Hafs 1405 ont été extraites de l’IPA fournie par le propriétaire du projet. Le fichier `ayahinfo_1920.db` de cette IPA a servi à construire `pages.json` et `bounds.json`, afin d’associer chaque verset à sa page et d’afficher les repères dans le lecteur. Le code ne modifie pas les images du mushaf. Avant la publication publique du dépôt, confirmer que les droits invoqués couvrent bien la redistribution de ces 604 images, y compris les éléments du Complexe du roi Fahd. Le texte Tanzil reste soumis à sa propre licence.
 
@@ -95,4 +100,4 @@ Ne mettre aucun certificat, mot de passe ou profil privé dans GitHub.
 
 ## Vérifications effectuées
 
-Le contrôle TypeScript et vingt tests automatisés passent, dont la planification des rappels à 19 h et le contenu exact du hadith. Le parcours depuis An-Nâs couvre les 6 236 versets une seule fois et termine par Al-Fatiha. Les exports Metro Android et iOS ont été générés, chacun avec les 604 pages. Les compilations Android et iOS 0.2.0 ont réussi sur GitHub. Les deux fichiers contiennent la configuration Supabase publique ; l’APK contient un bloc de signature Android et l’IPA ne contient aucune signature Apple. La base Supabase a été vérifiée : table `user_state` avec les colonnes attendues, RLS activée, quatre politiques par utilisateur et aucun droit de lecture anonyme. L’installation et la synchronisation sur deux téléphones physiques restent à valider.
+Le contrôle TypeScript et 33 tests automatisés passent, dont les répétitions 1, 2, 3, 5 et 10 fois, les 6 236 correspondances de Tajweed et de traduction, l'identification exacte d'une zone de verset et l'exclusion des objectifs entièrement connus. Le parcours depuis An-Nâs couvre les 6 236 versets une seule fois et termine par Al-Fatiha. L'export Metro Android de la version 0.4.0 a été généré avec les 604 pages. Les compilations iOS et Android de cette version et les interactions sur de vrais téléphones restent à vérifier.

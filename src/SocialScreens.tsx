@@ -1,6 +1,6 @@
-import React,{useEffect,useRef,useState} from 'react';
-import {Alert,KeyboardAvoidingView,Platform,ScrollView,Share,TextInput,View} from 'react-native';
-import {Button,Card,Choice,colors,Field,Label,Title} from './ui/theme';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {Alert,KeyboardAvoidingView,PanResponder,Platform,ScrollView,Share,TextInput,View} from 'react-native';
+import {Button,Card,CheckChoice,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
 import {currentUser,supabase} from './services/sync';
 import * as social from './services/social';
@@ -26,6 +26,7 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   const [draft,setDraft]=useState(''),[reason,setReason]=useState(''),[reportTarget,setReportTarget]=useState('');
   const [targetSessions,setTargetSessions]=useState('3'),[appointmentText,setAppointmentText]=useState('');
   const [notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+  const backSwipe=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(selected){setSelected(null);setOverview(null);}else onClose();}}),[selected,onClose]);
   const room=selected?.kind==='link'?{linkId:selected.id}:{groupId:selected?.id};
   const load=async()=>{
     const user=await currentUser();setMyId(user?.id??'');
@@ -64,7 +65,7 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   const otherId=(link:social.FriendLink)=>link.requester_id===myId?link.recipient_id:link.requester_id;
   const sender=(id:string)=>id===myId?'Moi':members.find(m=>m.user_id===id)?.profile?.display_name??links.find(l=>otherId(l)===id)?.other?.display_name??'Membre';
   const send=()=>act(async()=>{await social.sendMessage(room,draft);setDraft('');},'Message envoyé.');
-  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined} {...backSwipe.panHandlers}>
     <ScrollView ref={scrollRef} style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={selected?()=>{setSelected(null);setOverview(null);}:onClose}>← {selected?'Mes amis':'Profil'}</Button>
     <Title>{selected?selected.name:'Mes amis'}</Title>
@@ -74,9 +75,9 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
         <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label><Button small secondary onPress={()=>Share.share({message:`Rejoins-moi sur Mon Coran Mémoire : coranmemoire://friend/${profile.invite_code}`}).catch(e=>setNotice(errorText(e)))}>Partager mon lien d’invitation</Button></Card>
         {heading('Mon profil partagé')}
         <Label style={{color:colors.muted,fontSize:13,marginBottom:8}}>Ton prénom, modifiable dans Profil, apparaît sur les invitations.</Label>
-        <Choice label="Afficher ma présence en ligne" selected={profile.share_online} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_online:!profile.share_online}))} />
-        <Choice label="Partager ma progression avec mes amis" selected={profile.share_progress} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_progress:!profile.share_progress}))} />
-        <Choice label="Afficher mon passage actuel" selected={profile.share_location} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_location:!profile.share_location}))} />
+        <CheckChoice label="Afficher ma présence en ligne" selected={profile.share_online} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_online:!profile.share_online}))} />
+        <CheckChoice label="Partager ma progression avec mes amis" selected={profile.share_progress} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_progress:!profile.share_progress}))} />
+        <CheckChoice label="Afficher mon passage actuel" selected={profile.share_location} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_location:!profile.share_location}))} />
         {heading('Inviter un ami')}
         <Field value={code} onChangeText={setCode} placeholder="Code d’invitation" />
         <Button disabled={busy||!code.trim()} onPress={()=>act(async()=>{await social.sendFriendRequest(code);setCode('');},'Invitation envoyée.')}>Envoyer l’invitation</Button>
