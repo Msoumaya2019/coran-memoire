@@ -12,6 +12,13 @@ test('un nouveau téléphone récupère la sauvegarde distante avant tout progr�
   assert.equal(fresh.updatedAt,'1970-01-01T00:00:00.000Z');
   assert.equal(fresh.onboardingDone,false);
   assert(new Date(fresh.updatedAt)<new Date('2026-01-01T00:00:00.000Z'));
+  const local={...fresh,profile:{sex:'Femme',firstName:'Soumaya'},updatedAt:'2026-09-23T09:00:00.000Z'};
+  const remote={...fresh,onboardingDone:true,knowledge:{6236:'perfect'},theme:'feminine',updatedAt:'2026-09-22T09:00:00.000Z'};
+  const restored=p.reconcileState(local,remote);
+  assert.equal(restored.state.knowledge[6236],'perfect');
+  assert.equal(restored.state.profile.firstName,'Soumaya');
+  assert.equal(restored.state.theme,'feminine');
+  assert.equal(restored.shouldPush,true);
 });
 
 test('la remise à zéro efface apprentissage et révisions et relance le questionnaire',()=>{

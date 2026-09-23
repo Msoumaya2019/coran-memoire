@@ -39,6 +39,14 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
 export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],theme:'classic',updatedAt:'1970-01-01T00:00:00.000Z'});
+export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
+  if(!remote)return {state:local,shouldPush:true};
+  if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:local,shouldPush:true};
+  const profile=remote.profile??local.profile,theme=remote.theme??local.theme;
+  if(profile===remote.profile&&theme===remote.theme)return {state:remote,shouldPush:false};
+  const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
+  return {state:{...remote,profile,theme,updatedAt},shouldPush:true};
+}
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;

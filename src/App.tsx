@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, AppState as DeviceAppState, Image, Keyboard, Linking, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { applyTheme, Button, Card, CheckChoice, Choice, colors, Field, Label, Title } from './ui/theme';
-import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalFromPreset, goalIds, GoalPreset, goalPresetLabels, gradeRevision, intensivePaces, isRangeKnown, LearningDirection, markKnowledge, paceLabels, pacePresets, PacePreset, partialKnownRanges, postponeSession, progress, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, toggleKnownRange, touch, validGoal, weekdays } from './core/program';
+import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalFromPreset, goalIds, GoalPreset, goalPresetLabels, gradeRevision, intensivePaces, isRangeKnown, LearningDirection, markKnowledge, paceLabels, pacePresets, PacePreset, partialKnownRanges, postponeSession, progress, reconcileState, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, toggleKnownRange, touch, validGoal, weekdays } from './core/program';
 import { pageAfterSwipe } from './core/pageNavigation';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
 import { loadState, saveState } from './services/storage';
@@ -45,8 +45,8 @@ function AppContent(){
   useEffect(()=>{
     const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;
       const remote=await pullState(),local=loadState();
-      const restored=remote&&remote.updatedAt>local.updatedAt?{...remote,profile:remote.profile??local.profile,theme:remote.theme??local.theme}:local;
-      if(restored!==local){setState(restored);saveState(restored);}else await pushState(local);
+      const {state:restored,shouldPush}=reconcileState(local,remote);
+      if(restored!==local){setState(restored);saveState(restored);}if(shouldPush)await pushState(restored);
       setAccount(user.email??user.id);setPasswordRecovery(true);setWizard(null);setTab('Profil');
       setNotice('Lien confirmé. Choisis maintenant un mot de passe.');
     }catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
@@ -54,7 +54,7 @@ function AppContent(){
     const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
     return()=>subscription.remove();
   },[]);
-  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){const restored={...remote,profile:remote.profile??local.profile,theme:remote.theme??local.theme};setState(restored);saveState(restored);setWizard(restored.profile?.firstName?restored.onboardingDone?null:0:-1);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
+  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();const {state:restored,shouldPush}=reconcileState(local,remote);if(restored!==local){setState(restored);saveState(restored);setWizard(restored.profile?.firstName?restored.onboardingDone?null:0:-1);}if(shouldPush)await pushState(restored);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
     const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
@@ -162,7 +162,7 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
     {text:'Annuler',style:'cancel'},
     {text:'Tout remettre à zéro',style:'destructive',onPress:()=>{setResetting(true);onReset().catch((e:any)=>setNotice(`Réinitialisation impossible : ${e.message}`)).finally(()=>setResetting(false));}},
   ]);
-  const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){update({...remote,profile:remote.profile??state.profile,theme:remote.theme??state.theme});setNotice('Tes données ont été retrouvées.');}else{await pushState(state);setNotice(register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{Keyboard.dismiss();setBusy(false);}};
+  const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();const {state:restored,shouldPush}=reconcileState(state,remote);if(restored!==state)update(restored);if(shouldPush)await pushState(restored);setNotice(restored!==state?'Tes données ont été retrouvées.':register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{Keyboard.dismiss();setBusy(false);}};
   return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon profil</Title><Label style={{color:colors.muted}}>Tes préférences et tes données</Label></View>
     <Card><Label style={{fontWeight:'700'}}>Mon prénom</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Ce prénom apparaît dans les invitations envoyées à tes amis.</Label><Field value={firstName} onChangeText={setFirstName} placeholder="Ton prénom" autoCapitalize="words" /><Button secondary onPress={saveFirstName}>Enregistrer mon prénom</Button></Card>
     {passwordRecovery&&account?<Card><Label style={{fontWeight:'700'}}>Choisir mon mot de passe</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Utilise au moins 8 caractères. Ton mot de passe reste privé.</Label><Field value={newPassword} onChangeText={setNewPassword} placeholder="Nouveau mot de passe" secureTextEntry /><Button disabled={busy||newPassword.length<8} onPress={async()=>{setBusy(true);try{await changePassword(newPassword);setNewPassword('');setPasswordRecovery(false);setNotice('Mot de passe enregistré. Ton compte est prêt.');onPasswordReady();}catch(e:any){setNotice(e.message);}finally{Keyboard.dismiss();setBusy(false);}}}>Enregistrer mon mot de passe</Button></Card>:null}
