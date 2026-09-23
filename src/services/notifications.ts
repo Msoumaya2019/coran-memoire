@@ -38,10 +38,10 @@ export async function configureNotificationChannels(){
   await Notifications.setNotificationChannelAsync('learning',{name:'Rappels d’apprentissage',importance:Notifications.AndroidImportance.HIGH});
 }
 
-export async function ensureNotificationPermission(){
+export async function ensureNotificationPermission(prompt=false){
   await configureNotificationChannels();
   let result=await Notifications.getPermissionsAsync();
-  if(!result.granted&&result.ios?.status!==Notifications.IosAuthorizationStatus.PROVISIONAL)result=await Notifications.requestPermissionsAsync();
+  if(prompt&&!result.granted&&result.ios?.status!==Notifications.IosAuthorizationStatus.PROVISIONAL)result=await Notifications.requestPermissionsAsync();
   return result.granted||result.ios?.status===Notifications.IosAuthorizationStatus.PROVISIONAL;
 }
 
@@ -113,7 +113,7 @@ export async function scheduleRevisionReminder(dueDates:string[],enabled:boolean
 }
 
 export async function testLocalNotification(){
-  if(!await ensureNotificationPermission())throw new Error('Autorise les notifications dans les réglages du téléphone.');
+  if(!await ensureNotificationPermission(true))throw new Error('Autorise les notifications dans les réglages du téléphone.');
   await Notifications.scheduleNotificationAsync({content:{title:learningReminderTitle,body:learningReminderBody,data:{kind:reminderKind,test:true},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,seconds:5,channelId:'learning'}});
 }
 
