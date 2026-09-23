@@ -18,6 +18,11 @@ jobs:
       - run: pnpm test
       - name: Générer le projet natif iOS
         run: node node_modules/expo/bin/cli prebuild --platform ios --no-install
+      - name: Vérifier la capacité de notification iOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -R -q 'aps-environment' ios --include='*.entitlements'
       - name: Installer les dépendances iOS
         run: pod install --project-directory=ios
       - name: Compiler sans signature

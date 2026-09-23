@@ -11,6 +11,9 @@ L’icône de l’application provient de l’image fournie par le propriétaire
 - Programme durable dans SQLite : passages connus exclus, historique conservé lors des recalculs, report des séances. Pour l’objectif « Tout le Coran », choix entre commencer par Al-Fatiha ou par An-Nâs, puis parcourir les sourates précédentes en gardant les versets de chaque sourate dans leur ordre.
 - Lecteur page par page du mushaf Hafs 1405, avec glissement horizontal dans les deux sens, repères visuels des versets de la séance et mode récitation masqué.
 - Révisions espacées indépendantes du nouvel apprentissage.
+- Rappels locaux hebdomadaires à 19 h les jours d’apprentissage choisis, avec le hadith cité dans l’application. Réglages indépendants pour les rappels et les messages privés.
+- Notifications push des nouveaux messages privés déclenchées dans Supabase, avec ouverture de la conversation et suppression de l’alerte lorsque celle-ci est déjà ouverte au premier plan.
+- Deux thèmes complets, Vert et Rose, applicables immédiatement et sauvegardés.
 - Statistiques calculées avec un poids commun fondé sur les lettres des versets mémorisés ; une même plage n’est comptée qu’une fois.
 - Compte et synchronisation Supabase facultatifs, avec règles d’accès par utilisateur.
 - Espace amis avec code d’invitation, acceptation, suivi partagé, présence en ligne, messagerie libre, signalements, cercles privés, objectifs communs et rendez-vous de révision. Le compte administrateur dispose d’une file de signalements, peut consulter les messages récents, retirer un message et suspendre ou rétablir la messagerie d’un membre. Le rôle est contrôlé dans Supabase.
@@ -53,6 +56,8 @@ select id from auth.users where email = '<adresse du compte administrateur>'
 on conflict (user_id) do nothing;
 ```
 
+Pour les notifications des messages, exécuter ensuite `supabase/notifications.sql`. Cette migration ajoute seulement les préférences de notification et les jetons des appareils. Un déclencheur sur `friend_messages` envoie le push depuis Supabase, indépendamment du téléphone de l’expéditeur. Les rappels d’apprentissage sont programmés localement par le téléphone et ne dépendent pas du réseau.
+
 Vérifier que cette requête a ajouté une ligne ; le compte doit déjà exister et avoir confirmé son adresse. Ne jamais ajouter son adresse ou un identifiant privé au script public. Les administrateurs peuvent consulter les messages et signalements de toutes les discussions, y compris privées ; seuls les administrateurs désignés dans `app_admins` ont ce droit. Une suspension bloque l’envoi de nouveaux messages, tout en laissant l’apprentissage disponible. Les messages supprimés gardent un marqueur et le signalement conserve l’extrait original pour le suivi de modération.
 
 Pour un compte invité sans mot de passe, ajouter `coranmemoire://auth` dans **Authentication → URL Configuration → Redirect URLs**. Après installation de l’APK ou de l’IPA signée, ouvrir **Profil**, saisir l’adresse e-mail et choisir **Recevoir un lien pour créer ou changer mon mot de passe**. Ouvrir le courriel sur le même téléphone ; l’application propose alors de choisir le mot de passe. Le mot de passe n’est jamais enregistré dans le dépôt. Si l’invitation initiale redirige vers `localhost:3000`, utiliser le lien envoyé depuis l’application.
@@ -66,6 +71,14 @@ Le modèle de synchronisation est « dernière modification gagnante » lors de 
 Le workflow **Actions → IPA iPhone non signé → Run workflow** compile l’application sur un runner macOS GitHub, désactive la signature Xcode et met `coran-memoire-unsigned.ipa` dans les artefacts du run. Il ne demande ni compte Expo ni certificat Apple pour *compiler*. Cette IPA devra ensuite être signée dans eSign avec un certificat et un profil compatibles avec l’identifiant `fr.coranmemoire.app` avant installation. Le [dernier run GitHub](https://github.com/Msoumaya2019/coran-memoire/actions/runs/35777673278) a réussi ; son archive contient les 604 pages, la configuration Supabase publique et aucune signature.
 
 Le workflow **Actions → APK Android autonome → Run workflow** compile aussi un APK installable depuis GitHub, signé avec la clé Android de développement générée par Expo. Le [dernier run GitHub](https://github.com/Msoumaya2019/coran-memoire/actions/runs/35777669880) a réussi et intègre les variables Supabase publiques du dépôt. Cette clé de développement sert aux essais ; pour une distribution durable et les mises à jour, utiliser une clé de publication stable via EAS.
+
+### Notifications push : configuration native
+
+- Le projet Expo de cette application est `@scichiker/coran-memoire` (ID EAS `07400d61-2179-418c-b872-527c0387c477`). L’ancien projet Expo `Scichiker` est distinct.
+- Pour Android, l’application Firebase `fr.coranmemoire.app` se trouve dans le projet Firebase `coran-memoire`. Le workflow APK lit `FIREBASE_GOOGLE_SERVICES_JSON_BASE64` depuis les secrets GitHub, le décode dans le runner et l’injecte pendant la génération native. Le fichier local `google-services.json` est ignoré par Git.
+- L’envoi via Expo nécessite également une clé de compte de service Firebase FCM V1 enregistrée dans les **credentials Android** du projet Expo. Cette clé ne doit pas être placée dans le dépôt public.
+- Sur iPhone, l’IPA est compilée sans signature. Pour recevoir des push distants après signature dans eSign, le certificat et le profil Apple doivent être valides pour `fr.coranmemoire.app`, inclure la capacité Push Notifications et produire un droit `aps-environment` cohérent. Un identifiant APNs doit être configuré dans les credentials iOS d’Expo. L’IPA non signée seule ne prouve pas que les push fonctionnent.
+- Vérifier sur de vrais appareils : application ouverte, arrière-plan et fermée ; ouverture de la conversation ; rappel à 19 h un jour choisi, absence un autre jour, changement des jours et bascule des deux interrupteurs. Vérifier aussi le changement d’heure été/hiver dans le fuseau local. Le bouton **Tester les notifications** apparaît seulement en développement et programme un rappel local après cinq secondes.
 
 Le workflow **Actions → Vérifier et compiler → Run workflow** construit l’APK Android avec Expo EAS Build. Préparation du propriétaire du compte :
 

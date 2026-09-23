@@ -13,3 +13,4 @@ tests/build/
 *.mobileprovision
 *.cer
 *.pem
+google-services.json

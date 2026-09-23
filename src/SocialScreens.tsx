@@ -4,11 +4,12 @@ import {Button,Card,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
 import {currentUser} from './services/sync';
 import * as social from './services/social';
+import {setActiveConversation,updatePushPresence} from './services/notifications';
 
 const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
 const heading=(title:string)=><Label style={{fontSize:18,fontWeight:'700',color:colors.green,marginTop:18,marginBottom:8}}>{title}</Label>;
 
-export function FriendsScreen({onClose}:{onClose:()=>void}){
+export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialLinkId?:string|null}){
   const [profile,setProfile]=useState<social.FriendProfile|null>(null);
   const [links,setLinks]=useState<social.FriendLink[]>([]);
   const [groups,setGroups]=useState<social.FriendGroup[]>([]);
@@ -44,6 +45,11 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
     catch(e){setNotice(errorText(e));}finally{setBusy(false);}
   };
   useEffect(()=>{load().catch(e=>setNotice(errorText(e)));},[]);
+  useEffect(()=>{if(!initialLinkId)return;const link=links.find(item=>item.id===initialLinkId&&item.status==='accepted');if(link&&selected?.id!==link.id)setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});},[initialLinkId,links]);
+  useEffect(()=>{const linkId=selected?.kind==='link'?selected.id:null;setActiveConversation(linkId);
+    const timer=linkId?setInterval(()=>updatePushPresence(linkId).catch(()=>{}),20000):null;
+    return()=>{if(timer)clearInterval(timer);setActiveConversation(null);};
+  },[selected?.id,selected?.kind]);
   useEffect(()=>{if(!selected)return;loadRoom().catch(e=>setNotice(errorText(e)));
     const timer=setInterval(()=>loadRoom().catch(()=>{}),8000);return()=>clearInterval(timer);
   },[selected?.id,selected?.kind]);

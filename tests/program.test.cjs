@@ -25,6 +25,7 @@ test('la remise à zéro efface apprentissage et révisions et relance le questi
   let state=p.defaultState();
   state.profile={sex:'Femme',firstName:'Soumaya'};
   state.theme='feminine';
+  state.notifications={messages:false,learning:false};
   state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
   state=p.markKnowledge(state,{start:6231,end:6236},'perfect');
   state=p.generateProgram({...state,onboardingDone:true},monday,3);
@@ -37,6 +38,7 @@ test('la remise à zéro efface apprentissage et révisions et relance le questi
   assert.deepEqual(reset.revisions,[]);
   assert.deepEqual(reset.profile,{sex:'Femme',firstName:'Soumaya'});
   assert.equal(reset.theme,'feminine');
+  assert.deepEqual(reset.notifications,{messages:false,learning:false});
   assert.equal(p.progress(reset).quran,0);
   assert.equal(p.stats(reset,monday).revisions,0);
   assert(reset.updatedAt>=state.updatedAt);

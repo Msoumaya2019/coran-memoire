@@ -2,7 +2,10 @@ import React from 'react';
 import { Pressable, Text, TextInput, View, ViewStyle } from 'react-native';
 import { AppTheme } from '../core/program';
 
-const palettes={classic:{green:'#153F36',green2:'#276454',cream:'#F7F5EE',paper:'#FFFDF7',beige:'#E9E2D2',gold:'#B39559',text:'#20342E',muted:'#6C7B72',line:'#E4E7DF',red:'#9D554D',soft:'#ECF1EA',softBorder:'#CAD8CE',selected:'#EAF2EC'},feminine:{green:'#153F36',green2:'#B16F85',cream:'#FBF6F5',paper:'#FFFCFA',beige:'#F1DEE2',gold:'#BC8B92',text:'#2F3633',muted:'#806F75',line:'#EADDE0',red:'#9D554D',soft:'#F9EBEF',softBorder:'#E8C7D1',selected:'#F9E7ED'}};
+const palettes={
+  classic:{green:'#153F36',green2:'#276454',cream:'#F7F5EE',paper:'#FFFDF7',beige:'#E9E2D2',gold:'#B39559',text:'#20342E',muted:'#6C7B72',line:'#E4E7DF',red:'#9D554D',soft:'#ECF1EA',softBorder:'#CAD8CE',selected:'#EAF2EC',onDark:'#BFD6C9',onDarkSoft:'#C9DDCF',track:'#49756B',progress:'#DBC591',surahBadge:'#E8EFE8'},
+  feminine:{green:'#9D496B',green2:'#C76D91',cream:'#FFFAFC',paper:'#FFF5F8',beige:'#F3DCE5',gold:'#B39559',text:'#3C2833',muted:'#765B69',line:'#EBCAD8',red:'#9D554D',soft:'#F3DCE5',softBorder:'#DCA6BD',selected:'#F8E7EE',onDark:'#FBE4ED',onDarkSoft:'#F5D8E4',track:'#B9708D',progress:'#F3DCE5',surahBadge:'#F3DCE5'}
+};
 export const colors={...palettes.classic};
 export function applyTheme(theme:AppTheme){Object.assign(colors,palettes[theme]);}
 export function Label({children,style}:{children:React.ReactNode;style?:any}){return <Text style={[{color:colors.text,fontSize:16},style]}>{children}</Text>}
