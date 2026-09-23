@@ -5,7 +5,7 @@ import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState,
 import { pageAfterSwipe } from './core/pageNavigation';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
 import { loadState, saveState } from './services/storage';
-import { currentUser, pullState, pushState, signIn, signOut, supabase, syncConfigured } from './services/sync';
+import { changePassword, consumeAuthLink, currentUser, pullState, pushState, requestPasswordLink, signIn, signOut, supabase, syncConfigured } from './services/sync';
 import { mushafImages } from './data/mushafImages';
 import boundsRaw from './data/bounds.json';
 import {AdminScreen,FriendsScreen} from './SocialScreens';
@@ -29,6 +29,7 @@ export default function App(){
   const [notice,setNotice]=useState('');
   const [socialView,setSocialView]=useState<'friends'|'admin'|null>(null);
   const [admin,setAdmin]=useState(false);
+  const [passwordRecovery,setPasswordRecovery]=useState(false);
   const today=todayLocal();
   const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).catch(e=>setNotice(`Synchronisation : ${e.message}`));publishSocialProgress(next).catch(()=>{});}};
   const resetAll=async()=>{
@@ -38,6 +39,12 @@ export default function App(){
     if(account)try{await pushState(fresh);await publishSocialProgress(fresh);}catch(e:any){setNotice(`Remise à zéro effectuée sur ce téléphone. Synchronisation en attente : ${e.message}`);}
   };
   useEffect(()=>{if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
+  useEffect(()=>{
+    const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;setAccount(user.email??user.id);setPasswordRecovery(true);setWizard(null);setTab('Profil');setNotice('Lien confirmé. Choisis maintenant un mot de passe.');}catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
+    Linking.getInitialURL().then(url=>{if(url)handle(url);}).catch(()=>{});
+    const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
+    return()=>subscription.remove();
+  },[]);
   useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);setWizard(remote.onboardingDone?null:0);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
@@ -64,7 +71,7 @@ export default function App(){
           {tab==='Coran'&&<QuranScreen openReader={openReader} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setWizard(1)} />}
           {tab==='Progrès'&&<ProgressScreen state={state} prog={prog} stat={statsNow} allDone={allDone} />}
-          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>setSocialView('friends')} openAdmin={()=>setSocialView('admin')} admin={admin} onReset={resetAll} />}
+          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>setSocialView('friends')} openAdmin={()=>setSocialView('admin')} admin={admin} passwordRecovery={passwordRecovery} setPasswordRecovery={setPasswordRecovery} onReset={resetAll} />}
         </ScrollView>
         <View style={{height:74,backgroundColor:colors.paper,borderTopWidth:1,borderColor:colors.line,flexDirection:'row',justifyContent:'space-around',paddingBottom:12,paddingTop:8}}>
           {(['Accueil','Coran','Programme','Progrès','Profil'] as Tab[]).map((name,i)=><Pressable key={name} onPress={()=>setTab(name)} style={{alignItems:'center',justifyContent:'center',flex:1}}><Text style={{fontSize:22,color:tab===name?colors.green:colors.muted}}>{['⌂','۞','▤','▥','◯'][i]}</Text><Text style={{fontSize:10,fontWeight:tab===name?'700':'500',color:tab===name?colors.green:colors.muted}}>{name}</Text></Pressable>)}
@@ -131,8 +138,9 @@ function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnTyp
   </>;
 }
 
-function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal,openFriends,openAdmin,admin,onReset}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void;openFriends:()=>void;openAdmin:()=>void;admin:boolean;onReset:()=>Promise<void>}){
+function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal,openFriends,openAdmin,admin,passwordRecovery,setPasswordRecovery,onReset}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void;openFriends:()=>void;openAdmin:()=>void;admin:boolean;passwordRecovery:boolean;setPasswordRecovery:(v:boolean)=>void;onReset:()=>Promise<void>}){
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false);
+  const [newPassword,setNewPassword]=useState('');
   const [resetting,setResetting]=useState(false);
   const confirmReset=()=>Alert.alert('Tout remettre à zéro ?','Tes connaissances, séances, révisions, statistiques et choix de programme seront effacés. Ton compte et les pages du Coran seront conservés. Cette action ne peut pas être annulée.',[
     {text:'Annuler',style:'cancel'},
@@ -140,10 +148,11 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
   ]);
   const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){update(remote);setNotice('Tes données ont été retrouvées.');}else{await pushState(state);setNotice(register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{setBusy(false);}};
   return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon profil</Title><Label style={{color:colors.muted}}>Tes préférences et tes données</Label></View>
+    {passwordRecovery&&account?<Card><Label style={{fontWeight:'700'}}>Choisir mon mot de passe</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Utilise au moins 8 caractères. Ton mot de passe reste privé.</Label><Field value={newPassword} onChangeText={setNewPassword} placeholder="Nouveau mot de passe" secureTextEntry /><Button disabled={busy||newPassword.length<8} onPress={async()=>{setBusy(true);try{await changePassword(newPassword);setNewPassword('');setPasswordRecovery(false);setNotice('Mot de passe enregistré. Ton compte est prêt.');}catch(e:any){setNotice(e.message);}finally{setBusy(false);}}}>Enregistrer mon mot de passe</Button></Card>:null}
     <Card><Label style={{fontWeight:'700'}}>Connaissances</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Modifier les sourates, juz’, hizb et passages déjà appris.</Label><Button secondary onPress={openKnowledge}>Modifier mes connaissances</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Objectif et rythme</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>{state.goal.label} · {paceLabels[state.pace]}</Label><Button secondary onPress={openGoal}>Modifier mon programme</Button></Card>
     {account?<Card><Label style={{fontWeight:'700'}}>Amis et entraide</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Suivi partagé, messages et cercles privés.</Label><Button onPress={openFriends}>Ouvrir mes amis</Button>{admin?<Button secondary onPress={openAdmin}>Modérer les discussions</Button>:null}</Card>:null}
-    <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await setSocialOnline(false).catch(()=>{});await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button></>}</Card>
+    <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await setSocialOnline(false).catch(()=>{});await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button><Button secondary disabled={busy||!email.includes('@')} onPress={async()=>{setBusy(true);try{await requestPasswordLink(email);setNotice('Un lien vient de t’être envoyé. Ouvre-le sur ce téléphone après avoir installé la nouvelle version de l’application.');}catch(e:any){setNotice(e.message);}finally{setBusy(false);}}}>Recevoir un lien pour créer ou changer mon mot de passe</Button></>}</Card>
     <Card><Label style={{fontWeight:'700'}}>Réglages</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Tout remettre à zéro</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
   </>;

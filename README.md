@@ -55,6 +55,8 @@ on conflict (user_id) do nothing;
 
 Vérifier que cette requête a ajouté une ligne ; le compte doit déjà exister et avoir confirmé son adresse. Ne jamais ajouter son adresse ou un identifiant privé au script public. Les administrateurs peuvent consulter les messages et signalements de toutes les discussions, y compris privées ; seuls les administrateurs désignés dans `app_admins` ont ce droit. Une suspension bloque l’envoi de nouveaux messages, tout en laissant l’apprentissage disponible. Les messages supprimés gardent un marqueur et le signalement conserve l’extrait original pour le suivi de modération.
 
+Pour un compte invité sans mot de passe, ajouter `coranmemoire://auth` dans **Authentication → URL Configuration → Redirect URLs**. Après installation de l’APK ou de l’IPA signée, ouvrir **Profil**, saisir l’adresse e-mail et choisir **Recevoir un lien pour créer ou changer mon mot de passe**. Ouvrir le courriel sur le même téléphone ; l’application propose alors de choisir le mot de passe. Le mot de passe n’est jamais enregistré dans le dépôt. Si l’invitation initiale redirige vers `localhost:3000`, utiliser le lien envoyé depuis l’application.
+
 Pour l’IPA compilée par GitHub, renseigner dans **Settings → Secrets and variables → Actions → Variables** les variables `SUPABASE_URL` et `SUPABASE_PUBLISHABLE_KEY`. Le workflow les transmet au bundler Expo. La clé doit être de type **publishable/anon**, jamais `service_role`.
 
 Le modèle de synchronisation est « dernière modification gagnante » lors de la connexion ou des modifications. Une modification simultanée sur deux téléphones peut écraser l’autre ; une résolution fine des conflits reste à ajouter.

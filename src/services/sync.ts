@@ -18,6 +18,27 @@ export async function signIn(email:string,password:string,register=false) {
   return result.data.session?result.data.user:null;
 }
 export async function signOut(){await supabase?.auth.signOut();}
+export async function requestPasswordLink(email:string){
+  if(!supabase)throw new Error('Synchronisation non configurée');
+  const {error}=await supabase.auth.resetPasswordForEmail(email.trim(),{redirectTo:'coranmemoire://auth'});
+  if(error)throw error;
+}
+export async function consumeAuthLink(url:string){
+  if(!supabase||!url.startsWith('coranmemoire://auth'))return null;
+  const parsed=new URL(url);
+  const params=new URLSearchParams(parsed.hash.replace(/^#/,''));
+  if(params.get('error'))throw new Error(params.get('error_description')??'Lien expiré ou invalide.');
+  const access_token=params.get('access_token'),refresh_token=params.get('refresh_token');
+  if(!access_token||!refresh_token)throw new Error('Lien de connexion incomplet.');
+  const {data,error}=await supabase.auth.setSession({access_token,refresh_token});
+  if(error)throw error;
+  return data.user;
+}
+export async function changePassword(password:string){
+  if(!supabase)throw new Error('Synchronisation non configurée');
+  const {error}=await supabase.auth.updateUser({password});
+  if(error)throw error;
+}
 export async function pullState():Promise<AppState|null>{
   if(!supabase)return null;
   const user=await currentUser();if(!user)return null;
