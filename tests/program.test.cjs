@@ -45,12 +45,12 @@ test('la remise à zéro efface apprentissage et révisions et relance le questi
 });
 
 test('les gestes horizontaux tournent une page et le défilement vertical est ignoré',()=>{
-  assert.equal(nav.pageAfterSwipe(120,-90,8),121);
-  assert.equal(nav.pageAfterSwipe(120,90,8),119);
+  assert.equal(nav.pageAfterSwipe(555,-90,8),554);
+  assert.equal(nav.pageAfterSwipe(555,90,8),556);
   assert.equal(nav.pageAfterSwipe(120,25,8),120);
   assert.equal(nav.pageAfterSwipe(120,-90,100),120);
-  assert.equal(nav.pageAfterSwipe(1,90,5),1);
-  assert.equal(nav.pageAfterSwipe(604,-90,5),604);
+  assert.equal(nav.pageAfterSwipe(1,-90,5),1);
+  assert.equal(nav.pageAfterSwipe(604,90,5),604);
 });
 
 test('le rythme toumoun exige 480 limites Hafs vérifiées et contiguës',()=>{

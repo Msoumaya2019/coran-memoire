@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, AppState as DeviceAppState, Image, Keyboard, Linking, PanResponder, Pressable, ScrollView, Switch, Text, View, useWindowDimensions } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AppState as DeviceAppState, BackHandler, Image, Keyboard, Linking, PanResponder, Pressable, ScrollView, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { applyTheme, Button, Card, CheckChoice, Choice, colors, Field, Label, Title } from './ui/theme';
 import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalFromPreset, goalIds, GoalPreset, goalPresetLabels, gradeRevision, intensivePaces, isRangeKnown, LearningDirection, markKnowledge, paceLabels, pacePresets, PacePreset, partialKnownRanges, postponeSession, progress, reconcileState, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, toggleKnownRange, touch, validGoal, weekdays } from './core/program';
@@ -38,13 +38,14 @@ function AppContent(){
   const [pendingLinkId,setPendingLinkId]=useState<string|null>(null);
   const [pendingInviteCode,setPendingInviteCode]=useState<string|null>(null);
   const [unreadCount,setUnreadCount]=useState(0);
+  const syncWarningShown=useRef(false);
   const today=todayLocal();
-  const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).catch(e=>setNotice(`Synchronisation : ${e.message}`));publishSocialProgress(next).catch(()=>{});}};
+  const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).then(()=>{syncWarningShown.current=false;}).catch(()=>{if(!syncWarningShown.current){syncWarningShown.current=true;setNotice('Sauvegarde locale effectuée. Synchronisation en attente.');}});publishSocialProgress(next).catch(()=>{});}};
   const resetAll=async()=>{
     const fresh=resetAllProgress(loadState());
     saveState(fresh);setState(fresh);setReader(null);setPage(1);setMasked(false);setRevealed(null);setTab('Accueil');setWizard(fresh.profile?.firstName?0:-1);
     setNotice('Apprentissage et révisions remis à zéro.');
-    if(account)try{await pushState(fresh);await publishSocialProgress(fresh);}catch(e:any){setNotice(`Remise à zéro effectuée sur ce téléphone. Synchronisation en attente : ${e.message}`);}
+    if(account)try{await pushState(fresh);await publishSocialProgress(fresh);}catch{setNotice('Remise à zéro effectuée sur ce téléphone. Synchronisation en attente.');}
   };
   useEffect(()=>{if(!state.profile?.firstName&&wizard===null)setWizard(-1);else if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
   useEffect(()=>{
@@ -63,14 +64,14 @@ function AppContent(){
   useEffect(()=>{setMessagePresentationEnabled(state.notifications?.messages!==false);},[state.notifications?.messages]);
   useEffect(()=>{setProgressPresentationEnabled(state.notifications?.sharedProgress===true);},[state.notifications?.sharedProgress]);
   useEffect(()=>{
-    scheduleLearningReminders(state.learningDays,state.onboardingDone&&state.notifications?.permissionExplained===true&&state.notifications?.learning!==false).catch(e=>setNotice(`Rappels : ${e.message}`));
+    scheduleLearningReminders(state.learningDays,state.onboardingDone&&state.notifications?.permissionExplained===true&&state.notifications?.learning!==false).catch(()=>{});
   },[state.onboardingDone,state.learningDays.join(','),state.notifications?.learning,state.notifications?.permissionExplained]);
-  useEffect(()=>{scheduleRevisionReminder(state.revisions.map(r=>r.due),state.notifications?.permissionExplained===true&&state.notifications?.revision===true).catch(e=>setNotice(`Rappels de révision : ${e.message}`));},[state.revisions,state.notifications?.revision,state.notifications?.permissionExplained]);
+  useEffect(()=>{scheduleRevisionReminder(state.revisions.map(r=>r.due),state.notifications?.permissionExplained===true&&state.notifications?.revision===true).catch(()=>{});},[state.revisions,state.notifications?.revision,state.notifications?.permissionExplained]);
   useEffect(()=>{if(!account)return;
     const prefs=state.notifications;
     saveNotificationPreferences({messages:prefs?.messages!==false,friendRequests:prefs?.friendRequests!==false,sharedProgress:prefs?.sharedProgress===true,revision:prefs?.revision===true,messagePreview:prefs?.messagePreview!==false}).then(()=>{
       if(prefs?.permissionExplained&&(prefs.messages!==false||prefs.friendRequests!==false||prefs.sharedProgress===true))return registerPushDevice();
-    }).catch(e=>setNotice(`Notifications : ${e.message}`));
+    }).catch(()=>{});
   },[account,state.notifications]);
   useEffect(()=>{if(!account){setUnreadCount(0);return;}const refresh=()=>unreadMessageCount().then(setUnreadCount).catch(()=>{});refresh();const timer=setInterval(refresh,15000);const channel=supabase?.channel('unread-private-messages').on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages'},refresh).subscribe();return()=>{clearInterval(timer);if(channel)supabase?.removeChannel(channel);};},[account,socialView]);
   useEffect(()=>{
@@ -85,18 +86,24 @@ function AppContent(){
     const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
     return()=>subscription.remove();
   },[]);
-  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();const {state:restored,shouldPush}=reconcileState(local,remote);if(restored!==local){setState(restored);saveState(restored);setWizard(restored.profile?.firstName?restored.onboardingDone?null:0:-1);}if(shouldPush)await pushState(restored);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
+  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();const {state:restored,shouldPush}=reconcileState(local,remote);if(restored!==local){setState(restored);saveState(restored);setWizard(restored.profile?.firstName?restored.onboardingDone?null:0:-1);}if(shouldPush)await pushState(restored);}catch{}}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
-    (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
+    (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch{}})();
     const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
     const listener=DeviceAppState.addEventListener('change',status=>{setSocialOnline(status==='active').catch(()=>{});if(status==='active'&&loadState().notifications?.permissionExplained)registerPushDevice().catch(()=>{});else updatePushPresence(null).catch(()=>{});});
     return()=>{active=false;clearInterval(timer);listener.remove();setSocialOnline(false).catch(()=>{});};
   },[account]);
   useEffect(()=>{if(!account||!state.profile?.firstName)return;
-    ensureSocialProfile().then(profile=>profile.display_name===state.profile!.firstName?undefined:updateSocialProfile({...profile,display_name:state.profile!.firstName})).catch(e=>setNotice(`Prénom des invitations : ${e.message}`));
+    ensureSocialProfile().then(profile=>profile.display_name===state.profile!.firstName?undefined:updateSocialProfile({...profile,display_name:state.profile!.firstName})).catch(()=>{});
   },[account,state.profile?.firstName]);
   const openReader=(r:Reader)=>{setReader(r);setPage(pageOf(r.range.start));setMasked(false);setRevealed(null);};
   const closeReader=()=>setReader(null);
+  useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{
+    if(reader){setReader(null);return true;}
+    if(socialView){setSocialView(null);setPendingLinkId(null);return true;}
+    if(tab!=='Accueil'&&wizard===null){setTab('Accueil');return true;}
+    return false;
+  });return()=>subscription.remove();},[reader,socialView,tab,wizard]);
   const statsNow=stats(state,today),prog=progress(state);
   const todaySessions=state.sessions.filter(s=>s.date===today&&s.status==='todo');
   const due=state.revisions.filter(r=>r.due<=today);
@@ -290,14 +297,14 @@ function ReaderScreen({reader,page,setPage,masked,setMasked,revealed,setRevealed
   const grade=(value:'perfect'|'hesitant'|'errors'|'relearn')=>{if(!reader.revisionId)return;const next=gradeRevision(state,reader.revisionId,value);update(value==='relearn'?generateProgram(next):next);onClose();};
   return <><View style={{paddingHorizontal:18,paddingBottom:8,flexDirection:'row',alignItems:'center',gap:10}}><Pressable onPress={onClose} style={{padding:8}}><Label style={{fontSize:22}}>‹</Label></Pressable><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{reader.sessionId?'Séance du jour':reader.revisionId?'Révision':'Le Coran'}</Label><Label style={{color:colors.muted,fontSize:12}}>{reference(reader.range)}</Label></View><Label style={{color:colors.gold,fontSize:13}}>HAFS</Label></View>
     <ScrollView contentContainerStyle={{alignItems:'center',paddingBottom:25}}>
-      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',width:imageWidth,marginBottom:7}}><Pressable onPress={()=>{setPage(Math.min(604,page+1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>‹</Label></Pressable><Label style={{fontSize:13,color:colors.muted}}>Page {page} / 604 {reader.sessionId||reader.revisionId?`· passage pages ${from}–${to}`:''}</Label><Pressable onPress={()=>{setPage(Math.max(1,page-1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>›</Label></Pressable></View>
+      <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',width:imageWidth,marginBottom:7}}><Pressable onPress={()=>{setPage(Math.max(1,page-1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>‹</Label></Pressable><Label style={{fontSize:13,color:colors.muted}}>Page {page} / 604 {reader.sessionId||reader.revisionId?`· passage pages ${from}–${to}`:''}</Label><Pressable onPress={()=>{setPage(Math.min(604,page+1));setRevealed(null);}}><Label style={{fontSize:22,color:colors.green}}>›</Label></Pressable></View>
       <View {...swipe.panHandlers} style={{width:imageWidth,height:imageHeight}}>{masked?<View style={{width:imageWidth,height:imageHeight,backgroundColor:'#FFFDF4',borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:20,alignItems:'center',justifyContent:'center'}}><Label style={{color:colors.gold,fontSize:25}}>۞</Label><Label style={{color:colors.muted,textAlign:'center',marginTop:14}}>Récite les versets de mémoire.</Label>{revealed!==null&&visible.includes(revealed)&&<Label style={{fontSize:25,lineHeight:48,textAlign:'center',writingDirection:'rtl',marginTop:25}}>{verseAt(revealed).text} ۞</Label>}</View>:
         <View style={{width:imageWidth,height:imageHeight,backgroundColor:'white',borderWidth:2,borderColor:colors.beige,borderRadius:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}><Image source={mushafImages[page]} style={{width:imageWidth-4,height:imageHeight-4}} resizeMode="stretch" />
           {(reader.sessionId||reader.revisionId)&&bounds.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&id>=reader.range.start&&id<=reader.range.end;}).map((row,i)=><View key={i} pointerEvents="none" style={{position:'absolute',left:row[3]/1920*(imageWidth-4),top:row[5]/3106*(imageHeight-4),width:(row[4]-row[3])/1920*(imageWidth-4),height:(row[6]-row[5])/3106*(imageHeight-4),backgroundColor:'rgba(179,149,89,0.19)',borderRadius:4}} />)}
         </View>}</View>
       <Label style={{color:colors.muted,fontSize:12,marginTop:8}}>Glisse la page à gauche ou à droite pour la tourner.</Label>
-      <View style={{width:imageWidth,marginTop:12}}><Button secondary onPress={()=>{setMasked(!masked);setRevealed(null);}}>{masked?'Voir la page':'Masquer les versets pour réciter'}</Button>{masked&&<Button onPress={()=>setRevealed(nextReveal??visible[0]??null)}>Afficher le verset</Button>}</View>
       <View style={{width:imageWidth}}><PassageAudioPlayer sessionRange={reader.range} /></View>
+      <Card style={{width:imageWidth,marginTop:12}}><Label style={{fontWeight:'700'}}>Réciter de mémoire</Label><Button secondary onPress={()=>{setMasked(!masked);setRevealed(null);}}>{masked?'Voir la page':'Masquer les versets pour réciter'}</Button>{masked&&<Button onPress={()=>setRevealed(nextReveal??visible[0]??null)}>Afficher le verset</Button>}</Card>
       {reader.sessionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Après ma séance')}<Button onPress={()=>validate('done')}>J’ai mémorisé ce passage</Button><Button secondary onPress={()=>validate('work')}>Je dois encore le travailler</Button><Button secondary onPress={()=>validate('postpone')}>Reporter cette séance</Button></View>}
       {reader.revisionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Comment s’est passée la révision ?')}<Button onPress={()=>grade('perfect')}>Parfait, sans regarder</Button><Button secondary onPress={()=>grade('hesitant')}>Quelques hésitations</Button><Button secondary onPress={()=>grade('errors')}>Plusieurs erreurs</Button><Button secondary onPress={()=>grade('relearn')}>À réapprendre</Button></View>}
     </ScrollView>

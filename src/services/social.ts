@@ -23,7 +23,7 @@ export async function mySocialProfile():Promise<FriendProfile>{
 }
 export async function updateSocialProfile(values:Pick<FriendProfile,'display_name'|'share_online'|'share_location'|'share_progress'>){
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
-  checked(await client().from('friend_profiles').update(values).eq('id',user.id));
+  checked(await client().from('friend_profiles').update({display_name:values.display_name,share_online:values.share_online,share_location:values.share_location,share_progress:values.share_progress}).eq('id',user.id));
 }
 export async function listFriendLinks():Promise<FriendLink[]>{
   const user=await currentUser();if(!user)return [];

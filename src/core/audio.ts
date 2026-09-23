@@ -1,11 +1,16 @@
 import { Range, verseAt, verses } from './quran';
 
-export const reciters = [{id:'ar.husary',name:'Mahmoud Khalil Al-Husary',reading:'Hafs ‘an ‘Âsim',bitrate:128}] as const;
+export const reciters = [
+  {id:'ar.husary',name:'Mahmoud Khalil Al-Husary',reading:'Hafs ‘an ‘Âsim',bitrate:128},
+  {id:'ar.alafasy',name:'Mishary Rashid Alafasy',reading:'Hafs ‘an ‘Âsim',bitrate:128},
+  {id:'ar.minshawi',name:'Mohammed Siddiq Al-Minshawi',reading:'Hafs ‘an ‘Âsim',bitrate:128},
+] as const;
+export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';
 export type AudioPosition = {verseId:number;repetition:number};
 
-export function verseAudioUrl(id:number,reciter=reciters[0]):string{
+export function verseAudioUrl(id:number,reciter:Reciter=reciters[0]):string{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset audio invalide.');
   return `https://cdn.islamic.network/quran/audio/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
 }

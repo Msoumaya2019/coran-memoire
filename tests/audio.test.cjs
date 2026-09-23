@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {nextAudioPosition,verseAudioUrl,audioRange}=require('./build/core/audio.js');
+const {nextAudioPosition,verseAudioUrl,audioRange,reciters}=require('./build/core/audio.js');
 
 function play(range,count,mode='passage'){
   const sequence=[];let current={verseId:range.start,repetition:1};
@@ -25,6 +25,8 @@ test('continu et arrêt automatique désactivé reprennent au début du passage'
 
 test('l’audio ne sort pas du passage et utilise le numéro global Hafs',()=>{
   assert.equal(verseAudioUrl(1),'https://cdn.islamic.network/quran/audio/128/ar.husary/1.mp3');
+  assert.equal(verseAudioUrl(1,reciters[1]),'https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3');
+  assert.equal(verseAudioUrl(1,reciters[2]),'https://cdn.islamic.network/quran/audio/128/ar.minshawi/1.mp3');
   assert.deepEqual(audioRange(2,4),{start:2,end:4});
   assert.throws(()=>audioRange(4,2));
   assert.throws(()=>verseAudioUrl(6237));
