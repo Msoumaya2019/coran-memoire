@@ -87,9 +87,11 @@ test('cocher un ensemble connu conserve les passages partiels et évite les doub
   const surah=q.surahs[113];
   let state=p.defaultState();
   state=p.markKnowledge(state,{start:surah.start,end:surah.start+1},'perfect');
+  assert.deepEqual(p.partialKnownRanges(state),[{start:surah.start,end:surah.start+1}]);
   assert.equal(p.isRangeKnown(state,surah),false);
   state=p.toggleKnownRange(state,surah);
   assert.equal(p.isRangeKnown(state,surah),true);
+  assert.deepEqual(p.partialKnownRanges(state),[]);
   assert.equal(p.memorizedIds(state).filter(id=>id>=surah.start&&id<=surah.end).length,surah.count);
   state=p.toggleKnownRange(state,surah);
   assert.equal(p.isRangeKnown(state,surah),false);

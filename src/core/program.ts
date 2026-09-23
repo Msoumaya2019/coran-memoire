@@ -60,6 +60,19 @@ export function isRangeKnown(state:AppState,range:Range):boolean {
 export function toggleKnownRange(state:AppState,range:Range):AppState {
   return markKnowledge(state,range,isRangeKnown(state,range)?'learning':'perfect');
 }
+export function partialKnownRanges(state:AppState):Range[] {
+  const ids=memorizedIds(state).sort((a,b)=>a-b);
+  const ranges:Range[]=[];
+  for(const id of ids){
+    const previous=ranges[ranges.length-1];
+    if(previous&&id===previous.end+1&&surahAt(id).number===surahAt(previous.start).number)previous.end=id;
+    else ranges.push({start:id,end:id});
+  }
+  return ranges.filter(range=>{
+    const surah=surahAt(range.start);
+    return range.start!==surah.start||range.end!==surah.end;
+  });
+}
 export function goalIds(state: AppState): number[] {return expand(state.goal.ranges);}
 export function learningOrderIds(state: AppState): number[] {
   const ids=goalIds(state);
