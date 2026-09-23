@@ -12,7 +12,7 @@ export type Goal = { label: string; ranges: Range[]; direction?: LearningDirecti
 export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
 export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine';
-export type NotificationPreferences = { messages: boolean; learning: boolean };
+export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };

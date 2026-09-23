@@ -10,8 +10,9 @@ import { changePassword, consumeAuthLink, currentUser, pullState, pushState, req
 import { mushafImages } from './data/mushafImages';
 import boundsRaw from './data/bounds.json';
 import {AdminScreen,FriendsScreen} from './SocialScreens';
-import {ensureSocialProfile,isSocialAdmin,publishSocialProgress,setSocialOnline,updateSocialProfile} from './services/social';
-import { Notifications, notificationDestination, registerPushDevice, saveMessageNotificationPreference, scheduleLearningReminders, setMessagePresentationEnabled, testLocalNotification, unregisterPushDevice, updatePushPresence } from './services/notifications';
+import {ensureSocialProfile,isSocialAdmin,publishSocialProgress,setSocialOnline,unreadMessageCount,updateSocialProfile} from './services/social';
+import { Notifications, ensureNotificationPermission, notificationDestination, registerPushDevice, saveNotificationPreferences, scheduleLearningReminders, scheduleRevisionReminder, setMessagePresentationEnabled, setProgressPresentationEnabled, testLocalNotification, unregisterPushDevice, updatePushPresence } from './services/notifications';
+import {PassageAudioPlayer} from './PassageAudioPlayer';
 
 type Tab='Accueil'|'Coran'|'Programme'|'Progrès'|'Profil';
 type Reader={range:Range;sessionId?:string;revisionId?:string};
@@ -35,6 +36,8 @@ function AppContent(){
   const [admin,setAdmin]=useState(false);
   const [passwordRecovery,setPasswordRecovery]=useState(false);
   const [pendingLinkId,setPendingLinkId]=useState<string|null>(null);
+  const [pendingInviteCode,setPendingInviteCode]=useState<string|null>(null);
+  const [unreadCount,setUnreadCount]=useState(0);
   const today=todayLocal();
   const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).catch(e=>setNotice(`Synchronisation : ${e.message}`));publishSocialProgress(next).catch(()=>{});}};
   const resetAll=async()=>{
@@ -52,21 +55,26 @@ function AppContent(){
     };
     Notifications.getLastNotificationResponseAsync().then(response=>{if(response)open(response.notification.request.content.data);}).catch(()=>{});
     const response=Notifications.addNotificationResponseReceivedListener(event=>open(event.notification.request.content.data));
-    const tokens=Notifications.addPushTokenListener(()=>registerPushDevice().catch(()=>{}));
+    const tokens=Notifications.addPushTokenListener(()=>{if(loadState().notifications?.permissionExplained)registerPushDevice().catch(()=>{});});
     return()=>{response.remove();tokens.remove();};
   },[]);
   useEffect(()=>{if(account&&pendingLinkId){setReader(null);setWizard(null);setSocialView('friends');}},[account,pendingLinkId]);
+  useEffect(()=>{if(account&&pendingInviteCode){setReader(null);setWizard(null);setSocialView('friends');}},[account,pendingInviteCode]);
   useEffect(()=>{setMessagePresentationEnabled(state.notifications?.messages!==false);},[state.notifications?.messages]);
+  useEffect(()=>{setProgressPresentationEnabled(state.notifications?.sharedProgress===true);},[state.notifications?.sharedProgress]);
   useEffect(()=>{
-    scheduleLearningReminders(state.learningDays,state.onboardingDone&&state.notifications?.learning!==false).catch(e=>setNotice(`Rappels : ${e.message}`));
-  },[state.onboardingDone,state.learningDays.join(','),state.notifications?.learning]);
+    scheduleLearningReminders(state.learningDays,state.onboardingDone&&state.notifications?.permissionExplained===true&&state.notifications?.learning!==false).catch(e=>setNotice(`Rappels : ${e.message}`));
+  },[state.onboardingDone,state.learningDays.join(','),state.notifications?.learning,state.notifications?.permissionExplained]);
+  useEffect(()=>{scheduleRevisionReminder(state.revisions.map(r=>r.due),state.notifications?.permissionExplained===true&&state.notifications?.revision===true).catch(e=>setNotice(`Rappels de révision : ${e.message}`));},[state.revisions,state.notifications?.revision,state.notifications?.permissionExplained]);
   useEffect(()=>{if(!account)return;
-    saveMessageNotificationPreference(state.notifications?.messages!==false).then(()=>{
-      if(state.notifications?.messages!==false)return registerPushDevice();
-    }).catch(e=>setNotice(`Notifications des messages : ${e.message}`));
-  },[account,state.notifications?.messages]);
+    const prefs=state.notifications;
+    saveNotificationPreferences({messages:prefs?.messages!==false,friendRequests:prefs?.friendRequests!==false,sharedProgress:prefs?.sharedProgress===true,revision:prefs?.revision===true,messagePreview:prefs?.messagePreview!==false}).then(()=>{
+      if(prefs?.permissionExplained&&(prefs.messages!==false||prefs.friendRequests!==false||prefs.sharedProgress===true))return registerPushDevice();
+    }).catch(e=>setNotice(`Notifications : ${e.message}`));
+  },[account,state.notifications]);
+  useEffect(()=>{if(!account){setUnreadCount(0);return;}const refresh=()=>unreadMessageCount().then(setUnreadCount).catch(()=>{});refresh();const timer=setInterval(refresh,15000);const channel=supabase?.channel('unread-private-messages').on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages'},refresh).subscribe();return()=>{clearInterval(timer);if(channel)supabase?.removeChannel(channel);};},[account,socialView]);
   useEffect(()=>{
-    const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;
+    const handle=async(url:string)=>{try{const invite=url.match(/^coranmemoire:\/\/friend\/([A-Za-z0-9_-]+)$/);if(invite){setPendingInviteCode(invite[1]);setTab('Profil');setNotice('Connecte-toi pour accepter cette invitation.');return;}const user=await consumeAuthLink(url);if(!user)return;
       const remote=await pullState(),local=loadState();
       const {state:restored,shouldPush}=reconcileState(local,remote);
       if(restored!==local){setState(restored);saveState(restored);}if(shouldPush)await pushState(restored);
@@ -81,7 +89,7 @@ function AppContent(){
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
     const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
-    const listener=DeviceAppState.addEventListener('change',status=>{setSocialOnline(status==='active').catch(()=>{});if(status==='active')registerPushDevice().catch(()=>{});else updatePushPresence(null).catch(()=>{});});
+    const listener=DeviceAppState.addEventListener('change',status=>{setSocialOnline(status==='active').catch(()=>{});if(status==='active'&&loadState().notifications?.permissionExplained)registerPushDevice().catch(()=>{});else updatePushPresence(null).catch(()=>{});});
     return()=>{active=false;clearInterval(timer);listener.remove();setSocialOnline(false).catch(()=>{});};
   },[account]);
   useEffect(()=>{if(!account||!state.profile?.firstName)return;
@@ -98,11 +106,11 @@ function AppContent(){
   return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}}>
     {reader?<ReaderScreen reader={reader} page={page} setPage={setPage} masked={masked} setMasked={setMasked} revealed={revealed} setRevealed={setRevealed} onClose={closeReader} state={state} update={update} />:
       wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizard} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
-      socialView==='friends'?<FriendsScreen initialLinkId={pendingLinkId} onClose={()=>{setSocialView(null);setPendingLinkId(null);}} />:
+      socialView==='friends'?<FriendsScreen initialLinkId={pendingLinkId} initialCode={pendingInviteCode} shareText={`Mon objectif ${state.goal.label} est atteint à ${percent(prog.goal)}. Cette semaine, j’ai appris ${statsNow.week} versets.`} onClose={()=>{setSocialView(null);setPendingLinkId(null);setPendingInviteCode(null);}} />:
       socialView==='admin'?<AdminScreen onClose={()=>setSocialView(null)} />:
       <>
         <ScrollView key={tab} contentContainerStyle={{paddingHorizontal:18,paddingBottom:30}}>
-          {tab==='Accueil'&&<Home state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} />}
+          {tab==='Accueil'&&<Home state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} unreadCount={unreadCount} openMessages={()=>{if(!account){setTab('Profil');setNotice('Connecte-toi pour accéder à tes messages.');return;}setPendingLinkId(null);setSocialView('friends');}} />}
           {tab==='Coran'&&<QuranScreen openReader={openReader} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setWizard(1)} />}
           {tab==='Progrès'&&<ProgressScreen state={state} prog={prog} stat={statsNow} allDone={allDone} />}
@@ -116,9 +124,9 @@ function AppContent(){
   </SafeAreaView>;
 }
 
-function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void}){
+function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader,unreadCount,openMessages}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void;unreadCount:number;openMessages:()=>void}){
   return <>
-    <View style={{paddingTop:12,paddingBottom:20}}><Label style={{color:colors.muted}}>Bonjour{state.profile?.firstName?` ${state.profile.firstName}`:''} et bienvenue dans ton programme de mémorisation.</Label><Title>Ton chemin, jour après jour</Title></View>
+    <View style={{paddingTop:12,paddingBottom:20,flexDirection:'row',alignItems:'center',gap:10}}><View style={{flex:1}}><Label style={{color:colors.muted}}>Bonjour{state.profile?.firstName?` ${state.profile.firstName}`:''} et bienvenue dans ton programme de mémorisation.</Label><Title>Ton chemin, jour après jour</Title></View><Pressable accessibilityLabel={`Messages, ${unreadCount} non lus`} onPress={openMessages} style={{padding:10,borderRadius:14,backgroundColor:colors.soft}}><Text style={{fontSize:24,color:colors.green}}>✉</Text>{unreadCount>0?<Text style={{color:colors.red,fontWeight:'700',textAlign:'center'}}>{unreadCount>99?'99+':unreadCount}</Text>:null}</Pressable></View>
     <Card style={{backgroundColor:colors.green,borderColor:colors.green,padding:22}}><Label style={{color:colors.onDark,fontSize:13}}>MON OBJECTIF ACTUEL</Label><Text style={{color:'white',fontSize:23,fontWeight:'700',marginTop:7}}>{state.goal.label}</Text>{state.goal.direction==='fromNas'&&<Label style={{color:colors.onDarkSoft,fontSize:13,marginTop:5}}>Depuis An-Nâs, sourate après sourate</Label>}<View style={{height:8,backgroundColor:colors.track,borderRadius:10,marginTop:20}}><View style={{width:percent(prog.goal) as any,height:8,backgroundColor:colors.progress,borderRadius:10}} /></View><View style={{flexDirection:'row',justifyContent:'space-between',marginTop:9}}><Label style={{color:'white',fontSize:13}}>Objectif : {percent(prog.goal)}</Label><Label style={{color:colors.onDarkSoft,fontSize:13}}>Coran : {percent(prog.quran)}</Label></View></Card>
     {section('Aujourd’hui')}
     <Card>{todaySessions.length?<><Label style={{color:colors.muted,fontSize:13}}>PROGRAMME D’APPRENTISSAGE</Label>{todaySessions.map(s=><View key={s.id} style={{marginTop:9}}><Label style={{fontWeight:'700'}}>{reference(s)}</Label><Label style={{color:colors.muted,fontSize:13}}>{paceLabels[s.unit]}</Label></View>)}</>:<Label style={{color:colors.muted}}>Aucune nouvelle séance prévue aujourd’hui.</Label>}</Card>
@@ -179,6 +187,9 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
   const [newPassword,setNewPassword]=useState('');
   const [resetting,setResetting]=useState(false);
   const [firstName,setFirstName]=useState(state.profile?.firstName??'');
+  const notificationPrefs:NonNullable<AppState['notifications']>=state.notifications??{messages:true,learning:true};
+  const setNotification=(key:'messages'|'learning'|'friendRequests'|'sharedProgress'|'revision'|'messagePreview',value:boolean)=>update(touch({...state,notifications:{...notificationPrefs,[key]:value}}));
+  const notificationSwitch=(label:string,key:'messages'|'learning'|'friendRequests'|'sharedProgress'|'revision'|'messagePreview',fallback:boolean)=><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:12,gap:12}}><Label style={{flex:1}}>{label}</Label><Switch accessibilityLabel={label} value={notificationPrefs[key]??fallback} onValueChange={value=>setNotification(key,value)} trackColor={{false:colors.line,true:colors.green2}} thumbColor={colors.paper} /></View>;
   useEffect(()=>setFirstName(state.profile?.firstName??''),[state.profile?.firstName]);
   const saveFirstName=()=>{const value=firstName.trim();if(value.length<2||value.length>40){setNotice('Saisis un prénom de 2 à 40 caractères.');return;}update(touch({...state,profile:{sex:state.profile?.sex??'Homme',firstName:value}}));setNotice('Prénom enregistré pour ton profil et tes invitations.');};
   const confirmReset=()=>Alert.alert('Tout remettre à zéro ?','Tes connaissances, séances, révisions, statistiques et choix de programme seront effacés. Ton compte et les pages du Coran seront conservés. Cette action ne peut pas être annulée.',[
@@ -193,7 +204,7 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
     <Card><Label style={{fontWeight:'700'}}>Objectif et rythme</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>{state.goal.label} · {paceLabels[state.pace]}</Label><Button secondary onPress={openGoal}>Modifier mon programme</Button></Card>
     {account?<Card><Label style={{fontWeight:'700'}}>Amis et entraide</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Suivi partagé, messages et cercles privés.</Label><Button onPress={openFriends}>Ouvrir mes amis</Button>{admin?<Button secondary onPress={openAdmin}>Modérer les discussions</Button>:null}</Card>:null}
     <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await setSocialOnline(false).catch(()=>{});await unregisterPushDevice().catch(()=>{});await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button><Button secondary disabled={busy||!email.includes('@')} onPress={async()=>{setBusy(true);try{await requestPasswordLink(email);setNotice('Un lien vient de t’être envoyé. Ouvre-le sur ce téléphone après avoir installé la nouvelle version de l’application.');}catch(e:any){setNotice(e.message);}finally{Keyboard.dismiss();setBusy(false);}}}>Recevoir un lien pour créer ou changer mon mot de passe</Button></>}</Card>
-    <Card><Label style={{fontWeight:'700'}}>Notifications</Label><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:12,gap:12}}><Label style={{flex:1}}>Messages privés</Label><Switch accessibilityLabel="Notifications des messages privés" value={state.notifications?.messages!==false} onValueChange={messages=>update(touch({...state,notifications:{messages,learning:state.notifications?.learning!==false}}))} trackColor={{false:colors.line,true:colors.green2}} thumbColor={colors.paper} /></View><View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:12,gap:12}}><Label style={{flex:1}}>Rappels d’apprentissage</Label><Switch accessibilityLabel="Rappels d’apprentissage" value={state.notifications?.learning!==false} onValueChange={learning=>update(touch({...state,notifications:{messages:state.notifications?.messages!==false,learning}}))} trackColor={{false:colors.line,true:colors.green2}} thumbColor={colors.paper} /></View><Label style={{color:colors.muted,fontSize:13,marginTop:12}}>Jours : {state.learningDays.length?[1,2,3,4,5,6,0].filter(day=>state.learningDays.includes(day)).map(day=>weekdays[day]).join(', '):'aucun'} · 19 h 00</Label>{__DEV__?<Button secondary small onPress={()=>testLocalNotification().then(()=>setNotice('Notification de test programmée dans 5 secondes.')).catch(e=>setNotice(`Test impossible : ${e.message}`))}>Tester les notifications</Button>:null}</Card>
+    <Card><Label style={{fontWeight:'700'}}>Notifications</Label>{!notificationPrefs.permissionExplained?<><Label style={{color:colors.muted,fontSize:13,marginTop:8}}>Les notifications t’avertissent des messages et invitations, et te rappellent d’apprendre ou de réviser. Tu peux choisir chaque type ci-dessous.</Label><Button secondary onPress={()=>ensureNotificationPermission().then(granted=>{if(granted){update(touch({...state,notifications:{...notificationPrefs,permissionExplained:true}}));setNotice('Notifications autorisées.');}else setNotice('Autorisation refusée. Tu peux la modifier dans les réglages du téléphone.');}).catch(e=>setNotice(String(e)))}>Autoriser les notifications sur ce téléphone</Button></>:null}{notificationSwitch('Messages privés','messages',true)}{notificationSwitch('Demandes d’amis','friendRequests',true)}{notificationSwitch('Progression partagée par les amis','sharedProgress',false)}{notificationSwitch('Rappels d’apprentissage','learning',true)}{notificationSwitch('Rappels de révision','revision',false)}{notificationSwitch('Afficher le contenu des messages','messagePreview',true)}<Label style={{color:colors.muted,fontSize:13,marginTop:12}}>Jours d’apprentissage : {state.learningDays.length?[1,2,3,4,5,6,0].filter(day=>state.learningDays.includes(day)).map(day=>weekdays[day]).join(', '):'aucun'} · 19 h 00</Label>{__DEV__?<Button secondary small onPress={()=>testLocalNotification().then(()=>setNotice('Notification de test programmée dans 5 secondes.')).catch(e=>setNotice(`Test impossible : ${e.message}`))}>Tester les notifications</Button>:null}</Card>
     <Card><Label style={{fontWeight:'700'}}>Apparence</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Choisis les couleurs de ton application.</Label><Choice label="Thème Vert" selected={(state.theme??'classic')==='classic'} onPress={()=>update(touch({...state,theme:'classic'}))} /><Choice label="Thème Rose" selected={state.theme==='feminine'} onPress={()=>update(touch({...state,theme:'feminine'}))} /></Card>
     <Card><Label style={{fontWeight:'700'}}>Réglages</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions. Ton prénom et ton thème seront conservés.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Tout remettre à zéro</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
@@ -286,6 +297,7 @@ function ReaderScreen({reader,page,setPage,masked,setMasked,revealed,setRevealed
         </View>}</View>
       <Label style={{color:colors.muted,fontSize:12,marginTop:8}}>Glisse la page à gauche ou à droite pour la tourner.</Label>
       <View style={{width:imageWidth,marginTop:12}}><Button secondary onPress={()=>{setMasked(!masked);setRevealed(null);}}>{masked?'Voir la page':'Masquer les versets pour réciter'}</Button>{masked&&<Button onPress={()=>setRevealed(nextReveal??visible[0]??null)}>Afficher le verset</Button>}</View>
+      <View style={{width:imageWidth}}><PassageAudioPlayer sessionRange={reader.range} /></View>
       {reader.sessionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Après ma séance')}<Button onPress={()=>validate('done')}>J’ai mémorisé ce passage</Button><Button secondary onPress={()=>validate('work')}>Je dois encore le travailler</Button><Button secondary onPress={()=>validate('postpone')}>Reporter cette séance</Button></View>}
       {reader.revisionId&&<View style={{width:imageWidth,marginTop:18}}>{section('Comment s’est passée la révision ?')}<Button onPress={()=>grade('perfect')}>Parfait, sans regarder</Button><Button secondary onPress={()=>grade('hesitant')}>Quelques hésitations</Button><Button secondary onPress={()=>grade('errors')}>Plusieurs erreurs</Button><Button secondary onPress={()=>grade('relearn')}>À réapprendre</Button></View>}
     </ScrollView>

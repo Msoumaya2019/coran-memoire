@@ -6,9 +6,12 @@ import { learningReminderBody, learningReminderTitle, reminderPlan } from '../co
 import { currentUser, supabase } from './sync';
 
 const reminderKind='learning-reminder';
+const revisionKind='revision-reminder';
 const messageKind='private-message';
+const progressKind='friend-progress';
 let activeLinkId:string|null=null;
 let messagesEnabled=true;
+let progressEnabled=false;
 let registeredToken:string|null=null;
 let installationId:string|null=null;
 let scheduleQueue=Promise.resolve();
@@ -17,15 +20,17 @@ const displayedMessages=new Set<string>();
 Notifications.setNotificationHandler({handleNotification:async notification=>{
   const data=notification.request.content.data;
   const messageId=typeof data?.messageId==='string'?data.messageId:'';
-  const sameChat=data?.kind===messageKind&&data?.linkId===activeLinkId&&DeviceAppState.currentState==='active';
-  const duplicate=data?.kind===messageKind&&!!messageId&&displayedMessages.has(messageId);
-  const show=!(sameChat||duplicate||data?.kind===messageKind&&!messagesEnabled);
-  if(data?.kind===messageKind&&messageId){displayedMessages.add(messageId);if(displayedMessages.size>200)displayedMessages.clear();}
+  const isChat=data?.kind===messageKind||data?.kind===progressKind;
+  const sameChat=isChat&&data?.linkId===activeLinkId&&DeviceAppState.currentState==='active';
+  const duplicate=isChat&&!!messageId&&displayedMessages.has(messageId);
+  const show=!(sameChat||duplicate||data?.kind===messageKind&&!messagesEnabled||data?.kind===progressKind&&!progressEnabled);
+  if(isChat&&messageId){displayedMessages.add(messageId);if(displayedMessages.size>200)displayedMessages.clear();}
   return {shouldShowBanner:show,shouldShowList:show,shouldPlaySound:show,shouldSetBadge:false};
 }});
 
 export function setActiveConversation(linkId:string|null){activeLinkId=linkId;updatePushPresence(linkId).catch(()=>{});}
 export function setMessagePresentationEnabled(enabled:boolean){messagesEnabled=enabled;}
+export function setProgressPresentationEnabled(enabled:boolean){progressEnabled=enabled;}
 
 export async function configureNotificationChannels(){
   if(Platform.OS!=='android')return;
@@ -60,7 +65,6 @@ export function scheduleLearningReminders(days:number[],enabled:boolean):Promise
 }
 
 export async function registerPushDevice(){
-  if(!messagesEnabled)return;
   if(!supabase)throw new Error('Synchronisation non configurée.');
   const user=await currentUser();if(!user)return;
   if(!await ensureNotificationPermission())throw new Error('Autorise les notifications dans les réglages du téléphone.');
@@ -90,11 +94,22 @@ export async function unregisterPushDevice(){
   registeredToken=null;
 }
 
-export async function saveMessageNotificationPreference(enabled:boolean){
+export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;messagePreview:boolean}){
   if(!supabase)return;
   const user=await currentUser();if(!user)return;
-  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:enabled,updated_at:new Date().toISOString()});
+  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
   if(error)throw error;
+}
+
+export async function scheduleRevisionReminder(dueDates:string[],enabled:boolean){
+  const scheduled=await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(scheduled.filter(item=>item.content.data?.kind===revisionKind).map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
+  if(!enabled||!dueDates.length)return;
+  const now=new Date();
+  const dates=dueDates.map(value=>new Date(`${value}T19:00:00`)).filter(date=>!Number.isNaN(date.getTime())).sort((a,b)=>a.getTime()-b.getTime());
+  const next=dates.find(date=>date>now)??new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,19);
+  if(!await ensureNotificationPermission())return;
+  await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Prends quelques minutes pour consolider ce que tu as mémorisé.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date:next,channelId:'learning'}});
 }
 
 export async function testLocalNotification(){
@@ -104,7 +119,10 @@ export async function testLocalNotification(){
 
 export function notificationDestination(data:Record<string,unknown>|undefined){
   if(data?.kind===reminderKind)return {kind:'program' as const};
+  if(data?.kind===revisionKind)return {kind:'program' as const};
   if(data?.kind===messageKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
+  if(data?.kind===progressKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
+  if((data?.kind==='friend-request'||data?.kind==='friend-accepted')&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
   return null;
 }
 

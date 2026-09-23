@@ -1,12 +1,12 @@
 import { AppState, progress, stats, todayLocal } from '../core/program';
 import { currentUser, supabase } from './sync';
 
-export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean};
+export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean};
 export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:FriendProfile};
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
 export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
 export type GroupMember={group_id:string;user_id:string;role:'owner'|'moderator'|'member';accepted_at:string|null;invited_by:string|null;profile?:FriendProfile};
-export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement';body:string;created_at:string;deleted_at:string|null};
+export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress';body:string;created_at:string;deleted_at:string|null};
 export type MessageReport={id:string;message_id:string;reason:string;reporter_id:string;excerpt:string;status:'open'|'reviewed';created_at:string};
 export type SocialSuspension={user_id:string;reason:string;suspended_until:string|null;created_at:string};
 export type SharedGoal={id:string;link_id:string;week_start:string;target_sessions:number;proposed_by:string;accepted_at:string|null};
@@ -21,7 +21,7 @@ export async function mySocialProfile():Promise<FriendProfile>{
   const user=await currentUser();if(!user)throw new Error('Connecte-toi pour utiliser les amis.');
   return checked(await client().from('friend_profiles').select('*').eq('id',user.id).single()) as FriendProfile;
 }
-export async function updateSocialProfile(values:Pick<FriendProfile,'display_name'|'share_online'|'share_location'>){
+export async function updateSocialProfile(values:Pick<FriendProfile,'display_name'|'share_online'|'share_location'|'share_progress'>){
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
   checked(await client().from('friend_profiles').update(values).eq('id',user.id));
 }
@@ -75,9 +75,22 @@ export async function deleteGroup(groupId:string){await rpc('delete_friend_group
 export async function listMessages(room:{linkId?:string;groupId?:string}):Promise<ChatMessage[]>{
   let query=client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100);
   query=room.linkId?query.eq('link_id',room.linkId):query.eq('group_id',room.groupId!);
-  return (checked(await query) as ChatMessage[]).reverse();
+  const messages=(checked(await query) as ChatMessage[]).reverse();
+  if(!messages.length)return messages;
+  const hidden=checked(await client().from('friend_message_hidden').select('message_id').in('message_id',messages.map(m=>m.id))) as {message_id:string}[];
+  const hiddenIds=new Set(hidden.map(h=>h.message_id));
+  return messages.filter(m=>!hiddenIds.has(m.id));
 }
-export async function sendMessage(room:{linkId?:string;groupId?:string},body:string,kind:'text'|'encouragement'='text'){
+export async function hideMessageForMe(messageId:string){
+  const user=await currentUser();if(!user)throw new Error('Connexion requise');
+  checked(await client().from('friend_message_hidden').upsert({message_id:messageId,user_id:user.id}));
+}
+export async function markConversationRead(linkId:string){
+  const user=await currentUser();if(!user)return;
+  checked(await client().from('friend_message_reads').upsert({link_id:linkId,user_id:user.id,last_read_at:new Date().toISOString()}));
+}
+export async function unreadMessageCount():Promise<number>{return await rpc('my_unread_messages') as number;}
+export async function sendMessage(room:{linkId?:string;groupId?:string},body:string,kind:'text'|'encouragement'|'progress'='text'){
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
   checked(await client().from('friend_messages').insert({link_id:room.linkId??null,group_id:room.groupId??null,sender_id:user.id,body:body.trim(),kind}));
 }

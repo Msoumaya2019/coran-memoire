@@ -1,15 +1,15 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Alert,KeyboardAvoidingView,Platform,ScrollView,TextInput,View} from 'react-native';
+import {Alert,KeyboardAvoidingView,Platform,ScrollView,Share,TextInput,View} from 'react-native';
 import {Button,Card,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
-import {currentUser} from './services/sync';
+import {currentUser,supabase} from './services/sync';
 import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
 
 const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
 const heading=(title:string)=><Label style={{fontSize:18,fontWeight:'700',color:colors.green,marginTop:18,marginBottom:8}}>{title}</Label>;
 
-export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialLinkId?:string|null}){
+export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onClose:()=>void;initialLinkId?:string|null;initialCode?:string|null;shareText:string}){
   const [profile,setProfile]=useState<social.FriendProfile|null>(null);
   const [links,setLinks]=useState<social.FriendLink[]>([]);
   const [groups,setGroups]=useState<social.FriendGroup[]>([]);
@@ -21,7 +21,7 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
   const [appointments,setAppointments]=useState<social.ReviewAppointment[]>([]);
   const [suspension,setSuspension]=useState<social.SocialSuspension|null>(null);
   const [myId,setMyId]=useState('');
-  const [code,setCode]=useState(''),[groupName,setGroupName]=useState('');
+  const [code,setCode]=useState(initialCode??''),[groupName,setGroupName]=useState('');
   const scrollRef=useRef<ScrollView>(null);
   const [draft,setDraft]=useState(''),[reason,setReason]=useState(''),[reportTarget,setReportTarget]=useState('');
   const [targetSessions,setTargetSessions]=useState('3'),[appointmentText,setAppointmentText]=useState('');
@@ -36,6 +36,7 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
   const loadRoom=async()=>{
     if(!selected)return;
     setMessages(await social.listMessages(selected.kind==='link'?{linkId:selected.id}:{groupId:selected.id}));
+    if(selected.kind==='link')await social.markConversationRead(selected.id);
     if(selected.kind==='group')setMembers(await social.listGroupMembers(selected.id));
     else{const [goals,dates]=await Promise.all([social.listSharedGoals(selected.id),social.listAppointments(selected.id)]);setSharedGoals(goals);setAppointments(dates);
       const link=links.find(l=>l.id===selected.id);if(link) setOverview(await social.friendOverview(link.requester_id===myId?link.recipient_id:link.requester_id));}
@@ -45,13 +46,16 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
     catch(e){setNotice(errorText(e));}finally{setBusy(false);}
   };
   useEffect(()=>{load().catch(e=>setNotice(errorText(e)));},[]);
+  useEffect(()=>{if(initialCode)setCode(initialCode);},[initialCode]);
   useEffect(()=>{if(!initialLinkId)return;const link=links.find(item=>item.id===initialLinkId&&item.status==='accepted');if(link&&selected?.id!==link.id)setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});},[initialLinkId,links]);
   useEffect(()=>{const linkId=selected?.kind==='link'?selected.id:null;setActiveConversation(linkId);
     const timer=linkId?setInterval(()=>updatePushPresence(linkId).catch(()=>{}),20000):null;
     return()=>{if(timer)clearInterval(timer);setActiveConversation(null);};
   },[selected?.id,selected?.kind]);
   useEffect(()=>{if(!selected)return;loadRoom().catch(e=>setNotice(errorText(e)));
-    const timer=setInterval(()=>loadRoom().catch(()=>{}),8000);return()=>clearInterval(timer);
+    const filter=selected.kind==='link'?`link_id=eq.${selected.id}`:`group_id=eq.${selected.id}`;
+    const channel=supabase?.channel(`friend-room-${selected.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages',filter},()=>loadRoom().catch(()=>{})).subscribe();
+    const timer=setInterval(()=>loadRoom().catch(()=>{}),30000);return()=>{clearInterval(timer);if(channel)supabase?.removeChannel(channel);};
   },[selected?.id,selected?.kind]);
   const openLink=async(link:social.FriendLink)=>{
     setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});
@@ -67,10 +71,11 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
     {notice?<Card><Label>{notice}</Label></Card>:null}
     {!selected?<>
       {!profile?<Card><Label>Connecte-toi à ton compte pour utiliser les amis.</Label></Card>:<>
-        <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label></Card>
+        <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label><Button small secondary onPress={()=>Share.share({message:`Rejoins-moi sur Mon Coran Mémoire : coranmemoire://friend/${profile.invite_code}`}).catch(e=>setNotice(errorText(e)))}>Partager mon lien d’invitation</Button></Card>
         {heading('Mon profil partagé')}
         <Label style={{color:colors.muted,fontSize:13,marginBottom:8}}>Ton prénom, modifiable dans Profil, apparaît sur les invitations.</Label>
         <Choice label="Afficher ma présence en ligne" selected={profile.share_online} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_online:!profile.share_online}))} />
+        <Choice label="Partager ma progression avec mes amis" selected={profile.share_progress} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_progress:!profile.share_progress}))} />
         <Choice label="Afficher mon passage actuel" selected={profile.share_location} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_location:!profile.share_location}))} />
         {heading('Inviter un ami')}
         <Field value={code} onChangeText={setCode} placeholder="Code d’invitation" />
@@ -87,7 +92,7 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
         {groups.map(g=><Card key={g.id}><Label style={{fontWeight:'700'}}>{g.name}</Label><Button small onPress={()=>{setSelected({id:g.id,kind:'group',name:g.name});setOverview(null);}}>Ouvrir</Button></Card>)}
       </>}
     </>:<>
-      {overview&&<Card><Label style={{fontWeight:'700'}}>{overview.display_name} · {overview.is_online?'En ligne':'Hors ligne'}</Label><Label>{overview.goal_label} · objectif atteint : {overview.goal_percent} %</Label><Label>Cette semaine : {overview.weekly_verses} versets · {overview.weekly_sessions} séances</Label>{overview.current_start&&overview.current_end?<Label>Passage actuel : {reference({start:overview.current_start,end:overview.current_end})}</Label>:null}</Card>}
+      {overview&&<Card><Label style={{fontWeight:'700'}}>{overview.display_name} · {overview.is_online?'En ligne':'Hors ligne'}</Label>{overview.goal_label?<><Label>{overview.goal_label} · objectif atteint : {overview.goal_percent} %</Label><Label>Cette semaine : {overview.weekly_verses} versets · {overview.weekly_sessions} séances</Label></>:<Label style={{color:colors.muted}}>Progression privée</Label>}{overview.current_start&&overview.current_end?<Label>Passage actuel : {reference({start:overview.current_start,end:overview.current_end})}</Label>:null}</Card>}
       {selected.kind==='link'&&<>
         {heading('Objectif partagé')}
         <Label style={{color:colors.muted,fontSize:13}}>Fixez ensemble un nombre de séances pour cette semaine. Chacun garde son propre programme.</Label>
@@ -111,7 +116,7 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
       {selected.kind==='group'&&<><Card><Label style={{fontWeight:'700'}}>Membres ({members.filter(m=>m.accepted_at).length}/5)</Label>{members.map(m=><View key={m.user_id}><Label>{m.profile?.display_name??'Membre'} · {m.role}{!m.accepted_at?' · invitation en attente':''}</Label>{!m.accepted_at&&m.user_id===myId?<Button small onPress={()=>act(()=>social.acceptGroupInvite(selected.id))}>Rejoindre</Button>:null}{!m.accepted_at&&m.user_id===myId?<Button small secondary onPress={()=>act(()=>social.declineGroupInvite(selected.id))}>Refuser</Button>:null}{m.user_id!==myId&&m.accepted_at&&members.some(x=>x.user_id===myId&&x.role==='owner')?<Button small secondary onPress={()=>act(()=>social.setGroupModerator(selected.id,m.user_id,m.role!=='moderator'))}>{m.role==='moderator'?'Retirer la modération':'Nommer modérateur'}</Button>:null}{m.user_id!==myId&&m.role!=='owner'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role))?<Button small secondary onPress={()=>act(()=>social.removeGroupMember(selected.id,m.user_id))}>Retirer du cercle</Button>:null}</View>)}</Card>{members.some(m=>m.user_id===myId&&['owner','moderator'].includes(m.role))&&links.filter(l=>l.status==='accepted').map(l=><Button key={l.id} small secondary onPress={()=>act(()=>social.inviteGroupMember(selected.id,otherId(l)))}>Inviter {l.other?.display_name??'un ami'}</Button>)}{members.some(m=>m.user_id===myId&&m.role==='owner')?<Button secondary onPress={()=>Alert.alert('Supprimer le cercle ?','Les messages de ce cercle seront supprimés définitivement.',[{text:'Annuler',style:'cancel'},{text:'Supprimer',style:'destructive',onPress:()=>act(async()=>{await social.deleteGroup(selected.id);setSelected(null);})}])}>Supprimer le cercle</Button>:null}</>}
       {heading('Discussion libre')}
       {suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())?<Card><Label>Messagerie suspendue : {suspension.reason}</Label></Card>:null}
-      {messages.map(m=><Card key={m.id}><Label style={{fontSize:12,color:colors.muted}}>{sender(m.sender_id)} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label style={{marginVertical:7}}>{m.body}</Label>{!m.deleted_at?<View style={{flexDirection:'row',gap:8}}>{m.sender_id===myId||selected.kind==='group'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role))?<Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button>:null}{m.sender_id!==myId?<Button small secondary onPress={()=>setReportTarget(m.id)}>Signaler</Button>:null}</View>:null}</Card>)}
+      {messages.map(m=><Card key={m.id} style={{marginLeft:m.sender_id===myId?30:0,marginRight:m.sender_id===myId?0:30,backgroundColor:m.sender_id===myId?colors.soft:colors.paper}}><Label style={{fontSize:12,color:colors.muted}}>{sender(m.sender_id)} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label style={{marginVertical:7}}>{m.body}</Label><View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}><Button small secondary onPress={()=>act(()=>social.hideMessageForMe(m.id))}>Masquer pour moi</Button>{!m.deleted_at&&(m.sender_id===myId||selected.kind==='group'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role)))?<Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button>:null}{!m.deleted_at&&m.sender_id!==myId?<Button small secondary onPress={()=>setReportTarget(m.id)}>Signaler</Button>:null}</View></Card>)}
       {reportTarget?<Card><Label>Signaler ce message à la modération</Label><Field value={reason} onChangeText={setReason} placeholder="Motif du signalement" /><Button small disabled={reason.trim().length<3} onPress={()=>act(async()=>{await social.reportMessage(reportTarget,reason);setReportTarget('');setReason('');},'Signalement envoyé.')}>Envoyer</Button><Button small secondary onPress={()=>setReportTarget('')}>Annuler</Button></Card>:null}
     </>}
     </ScrollView>
@@ -119,6 +124,7 @@ export function FriendsScreen({onClose,initialLinkId}:{onClose:()=>void;initialL
       <TextInput style={{minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={setDraft} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
       <Button disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
       <Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,'Bravo pour ta régularité !','encouragement'),'Encouragement envoyé.')}>Envoyer un encouragement</Button>
+      {selected.kind==='link'?<Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,shareText,'progress'),'Étape partagée avec cet ami.')}>Partager volontairement mon étape</Button>:null}
     </View>:null}
   </KeyboardAvoidingView>;
 }
