@@ -40,7 +40,12 @@ export default function App(){
   };
   useEffect(()=>{if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
   useEffect(()=>{
-    const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;setAccount(user.email??user.id);setPasswordRecovery(true);setWizard(null);setTab('Profil');setNotice('Lien confirmé. Choisis maintenant un mot de passe.');}catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
+    const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;
+      const remote=await pullState(),local=loadState();
+      if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);}else await pushState(local);
+      setAccount(user.email??user.id);setPasswordRecovery(true);setWizard(null);setTab('Profil');
+      setNotice('Lien confirmé. Choisis maintenant un mot de passe.');
+    }catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
     Linking.getInitialURL().then(url=>{if(url)handle(url);}).catch(()=>{});
     const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
     return()=>subscription.remove();
