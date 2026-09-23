@@ -35,7 +35,8 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
     if(!selected)return;
     setMessages(await social.listMessages(selected.kind==='link'?{linkId:selected.id}:{groupId:selected.id}));
     if(selected.kind==='group')setMembers(await social.listGroupMembers(selected.id));
-    else{const [goals,dates]=await Promise.all([social.listSharedGoals(selected.id),social.listAppointments(selected.id)]);setSharedGoals(goals);setAppointments(dates);}
+    else{const [goals,dates]=await Promise.all([social.listSharedGoals(selected.id),social.listAppointments(selected.id)]);setSharedGoals(goals);setAppointments(dates);
+      const link=links.find(l=>l.id===selected.id);if(link) setOverview(await social.friendOverview(link.requester_id===myId?link.recipient_id:link.requester_id));}
   };
   const act=async(fn:()=>Promise<unknown>,message='Enregistré.')=>{
     setBusy(true);try{await fn();setNotice(message);await load();if(selected)await loadRoom();}

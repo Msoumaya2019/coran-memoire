@@ -48,7 +48,7 @@ export default function App(){
   useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);setWizard(remote.onboardingDone?null:0);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
-    const timer=setInterval(()=>setSocialOnline(true).catch(()=>{}),45000);
+    const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
     const listener=DeviceAppState.addEventListener('change',status=>setSocialOnline(status==='active').catch(()=>{}));
     return()=>{active=false;clearInterval(timer);listener.remove();setSocialOnline(false).catch(()=>{});};
   },[account]);
