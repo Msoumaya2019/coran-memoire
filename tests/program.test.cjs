@@ -16,16 +16,20 @@ test('un nouveau téléphone récupère la sauvegarde distante avant tout progr�
 
 test('la remise à zéro efface apprentissage et révisions et relance le questionnaire',()=>{
   let state=p.defaultState();
+  state.profile={sex:'Femme',firstName:'Soumaya'};
+  state.theme='feminine';
   state.goal={label:'Tout le Coran',ranges:[{start:1,end:6236}],direction:'fromNas'};
   state=p.markKnowledge(state,{start:6231,end:6236},'perfect');
   state=p.generateProgram({...state,onboardingDone:true},monday,3);
   state=p.seedInitialRevisions(state,monday);
   assert(Object.keys(state.knowledge).length>0&&state.sessions.length>0&&state.revisions.length>0);
-  const reset=p.resetAllProgress();
+  const reset=p.resetAllProgress(state);
   assert.equal(reset.onboardingDone,false);
   assert.deepEqual(reset.knowledge,{});
   assert.deepEqual(reset.sessions,[]);
   assert.deepEqual(reset.revisions,[]);
+  assert.deepEqual(reset.profile,{sex:'Femme',firstName:'Soumaya'});
+  assert.equal(reset.theme,'feminine');
   assert.equal(p.progress(reset).quran,0);
   assert.equal(p.stats(reset,monday).revisions,0);
   assert(reset.updatedAt>=state.updatedAt);

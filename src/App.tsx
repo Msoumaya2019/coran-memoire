@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, AppState as DeviceAppState, Image, Linking, PanResponder, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
-import { Button, Card, CheckChoice, Choice, colors, Field, Label, Title } from './ui/theme';
+import { Alert, AppState as DeviceAppState, Image, Keyboard, Linking, PanResponder, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { applyTheme, Button, Card, CheckChoice, Choice, colors, Field, Label, Title } from './ui/theme';
 import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalFromPreset, goalIds, GoalPreset, goalPresetLabels, gradeRevision, intensivePaces, isRangeKnown, LearningDirection, markKnowledge, paceLabels, pacePresets, PacePreset, partialKnownRanges, postponeSession, progress, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, toggleKnownRange, touch, validGoal, weekdays } from './core/program';
 import { pageAfterSwipe } from './core/pageNavigation';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
@@ -9,7 +10,7 @@ import { changePassword, consumeAuthLink, currentUser, pullState, pushState, req
 import { mushafImages } from './data/mushafImages';
 import boundsRaw from './data/bounds.json';
 import {AdminScreen,FriendsScreen} from './SocialScreens';
-import {ensureSocialProfile,isSocialAdmin,publishSocialProgress,setSocialOnline} from './services/social';
+import {ensureSocialProfile,isSocialAdmin,publishSocialProgress,setSocialOnline,updateSocialProfile} from './services/social';
 
 type Tab='Accueil'|'Coran'|'Programme'|'Progrès'|'Profil';
 type Reader={range:Range;sessionId?:string;revisionId?:string};
@@ -17,14 +18,16 @@ const section=(title:string)=><Label style={{fontWeight:'700',fontSize:19,margin
 const percent=(n:number)=>`${Math.round(n*100)} %`;
 const dateText=(key:string)=>new Date(`${key}T12:00:00`).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
 
-export default function App(){
+export default function App(){return <SafeAreaProvider><AppContent /></SafeAreaProvider>;}
+
+function AppContent(){
   const [state,setState]=useState<AppState>(()=>loadState());
   const [tab,setTab]=useState<Tab>('Accueil');
   const [reader,setReader]=useState<Reader|null>(null);
   const [page,setPage]=useState(1);
   const [masked,setMasked]=useState(false);
   const [revealed,setRevealed]=useState<number|null>(null);
-  const [wizard,setWizard]=useState<number|null>(state.onboardingDone?null:0);
+  const [wizard,setWizard]=useState<number|null>(state.profile?.firstName?state.onboardingDone?null:0:-1);
   const [account,setAccount]=useState<string|null>(null);
   const [notice,setNotice]=useState('');
   const [socialView,setSocialView]=useState<'friends'|'admin'|null>(null);
@@ -34,15 +37,16 @@ export default function App(){
   const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).catch(e=>setNotice(`Synchronisation : ${e.message}`));publishSocialProgress(next).catch(()=>{});}};
   const resetAll=async()=>{
     const fresh=resetAllProgress(loadState());
-    saveState(fresh);setState(fresh);setReader(null);setPage(1);setMasked(false);setRevealed(null);setTab('Accueil');setWizard(0);
+    saveState(fresh);setState(fresh);setReader(null);setPage(1);setMasked(false);setRevealed(null);setTab('Accueil');setWizard(fresh.profile?.firstName?0:-1);
     setNotice('Apprentissage et révisions remis à zéro.');
     if(account)try{await pushState(fresh);await publishSocialProgress(fresh);}catch(e:any){setNotice(`Remise à zéro effectuée sur ce téléphone. Synchronisation en attente : ${e.message}`);}
   };
-  useEffect(()=>{if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
+  useEffect(()=>{if(!state.profile?.firstName&&wizard===null)setWizard(-1);else if(!state.onboardingDone&&wizard===null)setWizard(0);},[]);
   useEffect(()=>{
     const handle=async(url:string)=>{try{const user=await consumeAuthLink(url);if(!user)return;
       const remote=await pullState(),local=loadState();
-      if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);}else await pushState(local);
+      const restored=remote&&remote.updatedAt>local.updatedAt?{...remote,profile:remote.profile??local.profile,theme:remote.theme??local.theme}:local;
+      if(restored!==local){setState(restored);saveState(restored);}else await pushState(local);
       setAccount(user.email??user.id);setPasswordRecovery(true);setWizard(null);setTab('Profil');
       setNotice('Lien confirmé. Choisis maintenant un mot de passe.');
     }catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
@@ -50,13 +54,16 @@ export default function App(){
     const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
     return()=>subscription.remove();
   },[]);
-  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){setState(remote);saveState(remote);setWizard(remote.onboardingDone?null:0);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
+  useEffect(()=>{currentUser().then(async user=>{if(!user)return;setAccount(user.email??user.id);try{const remote=await pullState();const local=loadState();if(remote&&remote.updatedAt>local.updatedAt){const restored={...remote,profile:remote.profile??local.profile,theme:remote.theme??local.theme};setState(restored);saveState(restored);setWizard(restored.profile?.firstName?restored.onboardingDone?null:0:-1);}else await pushState(local);}catch(e:any){setNotice(`Synchronisation : ${e.message}`);}}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch(e:any){if(active)setNotice(`Espace amis : ${e.message}`);}})();
     const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
     const listener=DeviceAppState.addEventListener('change',status=>setSocialOnline(status==='active').catch(()=>{}));
     return()=>{active=false;clearInterval(timer);listener.remove();setSocialOnline(false).catch(()=>{});};
   },[account]);
+  useEffect(()=>{if(!account||!state.profile?.firstName)return;
+    ensureSocialProfile().then(profile=>profile.display_name===state.profile!.firstName?undefined:updateSocialProfile({...profile,display_name:state.profile!.firstName})).catch(e=>setNotice(`Prénom des invitations : ${e.message}`));
+  },[account,state.profile?.firstName]);
   const openReader=(r:Reader)=>{setReader(r);setPage(pageOf(r.range.start));setMasked(false);setRevealed(null);};
   const closeReader=()=>setReader(null);
   const statsNow=stats(state,today),prog=progress(state);
@@ -64,30 +71,31 @@ export default function App(){
   const due=state.revisions.filter(r=>r.due<=today);
   const allDone=state.sessions.filter(s=>s.status==='done').length;
   const finishEstimate=state.sessions.filter(s=>s.status==='todo').at(-1)?.date;
-  return <View style={{flex:1,backgroundColor:colors.cream,paddingTop:StatusBar.currentHeight||45}}>
+  applyTheme(state.theme??'classic');
+  return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}}>
     {reader?<ReaderScreen reader={reader} page={page} setPage={setPage} masked={masked} setMasked={setMasked} revealed={revealed} setRevealed={setRevealed} onClose={closeReader} state={state} update={update} />:
       wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizard} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
       socialView==='friends'?<FriendsScreen onClose={()=>setSocialView(null)} />:
       socialView==='admin'?<AdminScreen onClose={()=>setSocialView(null)} />:
       <>
         <ScrollView key={tab} contentContainerStyle={{paddingHorizontal:18,paddingBottom:30}}>
-          {notice?<Pressable onPress={()=>setNotice('')} style={{padding:10,backgroundColor:'#F9ECDD',borderRadius:12,marginBottom:10}}><Label style={{fontSize:13}}>{notice} ×</Label></Pressable>:null}
           {tab==='Accueil'&&<Home state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} />}
           {tab==='Coran'&&<QuranScreen openReader={openReader} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setWizard(1)} />}
           {tab==='Progrès'&&<ProgressScreen state={state} prog={prog} stat={statsNow} allDone={allDone} />}
-          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>setSocialView('friends')} openAdmin={()=>setSocialView('admin')} admin={admin} passwordRecovery={passwordRecovery} setPasswordRecovery={setPasswordRecovery} onReset={resetAll} />}
+          {tab==='Profil'&&<ProfileScreen state={state} update={update} account={account} setAccount={setAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>setSocialView('friends')} openAdmin={()=>setSocialView('admin')} admin={admin} passwordRecovery={passwordRecovery} setPasswordRecovery={setPasswordRecovery} onPasswordReady={()=>{if(!state.profile?.firstName)setWizard(-1);else if(!state.onboardingDone)setWizard(0);}} onReset={resetAll} />}
         </ScrollView>
         <View style={{height:74,backgroundColor:colors.paper,borderTopWidth:1,borderColor:colors.line,flexDirection:'row',justifyContent:'space-around',paddingBottom:12,paddingTop:8}}>
           {(['Accueil','Coran','Programme','Progrès','Profil'] as Tab[]).map((name,i)=><Pressable key={name} onPress={()=>setTab(name)} style={{alignItems:'center',justifyContent:'center',flex:1}}><Text style={{fontSize:22,color:tab===name?colors.green:colors.muted}}>{['⌂','۞','▤','▥','◯'][i]}</Text><Text style={{fontSize:10,fontWeight:tab===name?'700':'500',color:tab===name?colors.green:colors.muted}}>{name}</Text></Pressable>)}
         </View>
       </>}
-  </View>;
+    {notice?<Pressable accessibilityRole="alert" onPress={()=>setNotice('')} style={{position:'absolute',left:18,right:18,bottom:reader||wizard!==null||socialView?18:82,zIndex:50,padding:14,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.gold,borderRadius:14,elevation:8,shadowColor:'#000',shadowOpacity:0.16,shadowRadius:8}}><Label style={{fontSize:14,fontWeight:'600'}}>{notice}  ×</Label></Pressable>:null}
+  </SafeAreaView>;
 }
 
 function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void}){
   return <>
-    <View style={{paddingTop:12,paddingBottom:20}}><Label style={{color:colors.muted}}>Bonjour et bienvenue dans ton programme de mémorisation.</Label><Title>Ton chemin, jour après jour</Title></View>
+    <View style={{paddingTop:12,paddingBottom:20}}><Label style={{color:colors.muted}}>Bonjour{state.profile?.firstName?` ${state.profile.firstName}`:''} et bienvenue dans ton programme de mémorisation.</Label><Title>Ton chemin, jour après jour</Title></View>
     <Card style={{backgroundColor:colors.green,borderColor:colors.green,padding:22}}><Label style={{color:'#BFD6C9',fontSize:13}}>MON OBJECTIF ACTUEL</Label><Text style={{color:'white',fontSize:23,fontWeight:'700',marginTop:7}}>{state.goal.label}</Text>{state.goal.direction==='fromNas'&&<Label style={{color:'#C9DDCF',fontSize:13,marginTop:5}}>Depuis An-Nâs, sourate après sourate</Label>}<View style={{height:8,backgroundColor:'#49756B',borderRadius:10,marginTop:20}}><View style={{width:percent(prog.goal) as any,height:8,backgroundColor:'#DBC591',borderRadius:10}} /></View><View style={{flexDirection:'row',justifyContent:'space-between',marginTop:9}}><Label style={{color:'white',fontSize:13}}>Objectif : {percent(prog.goal)}</Label><Label style={{color:'#C9DDCF',fontSize:13}}>Coran : {percent(prog.quran)}</Label></View></Card>
     {section('Aujourd’hui')}
     <Card>{todaySessions.length?<><Label style={{color:colors.muted,fontSize:13}}>PROGRAMME D’APPRENTISSAGE</Label>{todaySessions.map(s=><View key={s.id} style={{marginTop:9}}><Label style={{fontWeight:'700'}}>{reference(s)}</Label><Label style={{color:colors.muted,fontSize:13}}>{paceLabels[s.unit]}</Label></View>)}</>:<Label style={{color:colors.muted}}>Aucune nouvelle séance prévue aujourd’hui.</Label>}</Card>
@@ -143,27 +151,34 @@ function ProgressScreen({state,prog,stat,allDone}:{state:AppState;prog:ReturnTyp
   </>;
 }
 
-function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal,openFriends,openAdmin,admin,passwordRecovery,setPasswordRecovery,onReset}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void;openFriends:()=>void;openAdmin:()=>void;admin:boolean;passwordRecovery:boolean;setPasswordRecovery:(v:boolean)=>void;onReset:()=>Promise<void>}){
+function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,openGoal,openFriends,openAdmin,admin,passwordRecovery,setPasswordRecovery,onPasswordReady,onReset}:{state:AppState;update:(s:AppState)=>void;account:string|null;setAccount:(v:string|null)=>void;setNotice:(v:string)=>void;openKnowledge:()=>void;openGoal:()=>void;openFriends:()=>void;openAdmin:()=>void;admin:boolean;passwordRecovery:boolean;setPasswordRecovery:(v:boolean)=>void;onPasswordReady:()=>void;onReset:()=>Promise<void>}){
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[busy,setBusy]=useState(false);
   const [newPassword,setNewPassword]=useState('');
   const [resetting,setResetting]=useState(false);
+  const [firstName,setFirstName]=useState(state.profile?.firstName??'');
+  useEffect(()=>setFirstName(state.profile?.firstName??''),[state.profile?.firstName]);
+  const saveFirstName=()=>{const value=firstName.trim();if(value.length<2||value.length>40){setNotice('Saisis un prénom de 2 à 40 caractères.');return;}update(touch({...state,profile:{sex:state.profile?.sex??'Homme',firstName:value}}));setNotice('Prénom enregistré pour ton profil et tes invitations.');};
   const confirmReset=()=>Alert.alert('Tout remettre à zéro ?','Tes connaissances, séances, révisions, statistiques et choix de programme seront effacés. Ton compte et les pages du Coran seront conservés. Cette action ne peut pas être annulée.',[
     {text:'Annuler',style:'cancel'},
     {text:'Tout remettre à zéro',style:'destructive',onPress:()=>{setResetting(true);onReset().catch((e:any)=>setNotice(`Réinitialisation impossible : ${e.message}`)).finally(()=>setResetting(false));}},
   ]);
-  const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){update(remote);setNotice('Tes données ont été retrouvées.');}else{await pushState(state);setNotice(register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{setBusy(false);}};
+  const handleAuth=async(register:boolean)=>{setBusy(true);try{const user=await signIn(email.trim(),password,register);if(user){setAccount(user.email??user.id);const remote=await pullState();if(remote&&remote.updatedAt>state.updatedAt){update({...remote,profile:remote.profile??state.profile,theme:remote.theme??state.theme});setNotice('Tes données ont été retrouvées.');}else{await pushState(state);setNotice(register?'Compte créé. Vérifie ton courriel si une confirmation est demandée.':'Synchronisation activée.');}}else setNotice('Vérifie ton courriel pour confirmer le compte.');}catch(e:any){setNotice(e.message??'Connexion impossible.');}finally{Keyboard.dismiss();setBusy(false);}};
   return <><View style={{paddingTop:12,paddingBottom:14}}><Title>Mon profil</Title><Label style={{color:colors.muted}}>Tes préférences et tes données</Label></View>
-    {passwordRecovery&&account?<Card><Label style={{fontWeight:'700'}}>Choisir mon mot de passe</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Utilise au moins 8 caractères. Ton mot de passe reste privé.</Label><Field value={newPassword} onChangeText={setNewPassword} placeholder="Nouveau mot de passe" secureTextEntry /><Button disabled={busy||newPassword.length<8} onPress={async()=>{setBusy(true);try{await changePassword(newPassword);setNewPassword('');setPasswordRecovery(false);setNotice('Mot de passe enregistré. Ton compte est prêt.');}catch(e:any){setNotice(e.message);}finally{setBusy(false);}}}>Enregistrer mon mot de passe</Button></Card>:null}
+    <Card><Label style={{fontWeight:'700'}}>Mon prénom</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Ce prénom apparaît dans les invitations envoyées à tes amis.</Label><Field value={firstName} onChangeText={setFirstName} placeholder="Ton prénom" autoCapitalize="words" /><Button secondary onPress={saveFirstName}>Enregistrer mon prénom</Button></Card>
+    {passwordRecovery&&account?<Card><Label style={{fontWeight:'700'}}>Choisir mon mot de passe</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Utilise au moins 8 caractères. Ton mot de passe reste privé.</Label><Field value={newPassword} onChangeText={setNewPassword} placeholder="Nouveau mot de passe" secureTextEntry /><Button disabled={busy||newPassword.length<8} onPress={async()=>{setBusy(true);try{await changePassword(newPassword);setNewPassword('');setPasswordRecovery(false);setNotice('Mot de passe enregistré. Ton compte est prêt.');onPasswordReady();}catch(e:any){setNotice(e.message);}finally{Keyboard.dismiss();setBusy(false);}}}>Enregistrer mon mot de passe</Button></Card>:null}
     <Card><Label style={{fontWeight:'700'}}>Connaissances</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Modifier les sourates, juz’, hizb et passages déjà appris.</Label><Button secondary onPress={openKnowledge}>Modifier mes connaissances</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Objectif et rythme</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>{state.goal.label} · {paceLabels[state.pace]}</Label><Button secondary onPress={openGoal}>Modifier mon programme</Button></Card>
     {account?<Card><Label style={{fontWeight:'700'}}>Amis et entraide</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Suivi partagé, messages et cercles privés.</Label><Button onPress={openFriends}>Ouvrir mes amis</Button>{admin?<Button secondary onPress={openAdmin}>Modérer les discussions</Button>:null}</Card>:null}
-    <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await setSocialOnline(false).catch(()=>{});await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button><Button secondary disabled={busy||!email.includes('@')} onPress={async()=>{setBusy(true);try{await requestPasswordLink(email);setNotice('Un lien vient de t’être envoyé. Ouvre-le sur ce téléphone après avoir installé la nouvelle version de l’application.');}catch(e:any){setNotice(e.message);}finally{setBusy(false);}}}>Recevoir un lien pour créer ou changer mon mot de passe</Button></>}</Card>
-    <Card><Label style={{fontWeight:'700'}}>Réglages</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Tout remettre à zéro</Button></Card>
+    <Card><Label style={{fontWeight:'700'}}>Synchronisation</Label>{!syncConfigured?<Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Ajoute l’URL et la clé publique de ton projet Supabase dans le fichier .env pour activer le compte.</Label>:account?<><Label style={{color:colors.muted,marginVertical:8}}>{account}</Label><Button secondary onPress={async()=>{try{await pushState(state);setNotice('Données synchronisées.');}catch(e:any){setNotice(e.message);}}}>Synchroniser maintenant</Button><Button secondary onPress={async()=>{await setSocialOnline(false).catch(()=>{});await signOut();setAccount(null);setNotice('Déconnecté. Les données restent sur ce téléphone.');}}>Se déconnecter</Button></>:<><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Retrouve ta progression sur un autre téléphone.</Label><Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" /><Field value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry /><Button disabled={busy||!email||!password} onPress={()=>handleAuth(false)}>Se connecter</Button><Button secondary disabled={busy||!email||password.length<6} onPress={()=>handleAuth(true)}>Créer un compte</Button><Button secondary disabled={busy||!email.includes('@')} onPress={async()=>{setBusy(true);try{await requestPasswordLink(email);setNotice('Un lien vient de t’être envoyé. Ouvre-le sur ce téléphone après avoir installé la nouvelle version de l’application.');}catch(e:any){setNotice(e.message);}finally{Keyboard.dismiss();setBusy(false);}}}>Recevoir un lien pour créer ou changer mon mot de passe</Button></>}</Card>
+    <Card><Label style={{fontWeight:'700'}}>Apparence</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Choisis les couleurs de ton application.</Label><Choice label="Thème classique" selected={(state.theme??'classic')==='classic'} onPress={()=>update(touch({...state,theme:'classic'}))} /><Choice label="Thème féminin · touches de rose" selected={state.theme==='feminine'} onPress={()=>update(touch({...state,theme:'feminine'}))} /></Card>
+    <Card><Label style={{fontWeight:'700'}}>Réglages</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions. Ton prénom et ton thème seront conservés.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Tout remettre à zéro</Button></Card>
     <Card><Label style={{fontWeight:'700'}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
   </>;
 }
 
 function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s:AppState)=>void;step:number;setStep:(n:number|null)=>void;onDone:()=>void}){
+  const [sex,setSex]=useState<'Homme'|'Femme'|null>(state.profile?.sex??null);
+  const [firstName,setFirstName]=useState(state.profile?.firstName??'');
   const [partSurah,setPartSurah]=useState(''),[partStart,setPartStart]=useState(''),[partEnd,setPartEnd]=useState('');
   const [paceLevel,setPaceLevel]=useState<PacePreset>(state.pace==='halfPage'?'intermediate':intensivePaces.includes(state.pace)?'intensive':'beginner');
   const [kind,setKind]=useState<GoalPreset|'custom'>(()=>(Object.keys(goalPresetLabels) as GoalPreset[]).find(key=>goalPresetLabels[key]===state.goal.label)??'custom');
@@ -187,6 +202,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
   const choosePaceLevel=(level:PacePreset)=>{setPaceLevel(level);update(touch({...state,pace:pacePresets[level].pace}));};
   const next=()=>{
     setError('');
+    if(step===-1){const value=firstName.trim();if(!sex){setError('Choisis Homme ou Femme pour continuer.');return;}if(value.length<2||value.length>40){setError('Saisis ton prénom, de 2 à 40 caractères.');return;}update(touch({...state,profile:{sex,firstName:value}}));if(state.onboardingDone)onDone();else setStep(0);return;}
     if(step===0){setStep(1);return;}
     if(step===1){
       if(kind!=='custom'){const goal=goalFromPreset(kind,kind==='all'?direction:'fromNas');update(touch({...state,goal}));setStep(2);return;}
@@ -198,8 +214,9 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
     if(!state.learningDays.length){setError('Sélectionne au moins un jour d’apprentissage.');return;}
     const done=generateProgram(seedInitialRevisions(touch({...state,onboardingDone:true})));update(done);onDone();
   };
-  return <><View style={{paddingHorizontal:18,paddingBottom:8}}><Label style={{fontSize:12,color:colors.gold,fontWeight:'700'}}>CONFIGURATION · {step+1}/4</Label><Title>{['Que connais-tu déjà ?','Quel est ton objectif ?','Quel rythme souhaites-tu ?','Quels jours souhaites-tu apprendre ?'][step]}</Title></View>
+  return <><View style={{paddingHorizontal:18,paddingBottom:8}}><Label style={{fontSize:12,color:colors.gold,fontWeight:'700'}}>{step===-1?'BIENVENUE':`CONFIGURATION · ${step+1}/4`}</Label><Title>{step===-1?'Faisons connaissance':['Que connais-tu déjà ?','Quel est ton objectif ?','Quel rythme souhaites-tu ?','Quels jours souhaites-tu apprendre ?'][step]}</Title></View>
     <ScrollView contentContainerStyle={{paddingHorizontal:18,paddingBottom:15}}>
+      {step===-1&&<><Label style={{color:colors.muted,marginBottom:14}}>Pour personnaliser ton parcours, indique d’abord si tu es un homme ou une femme, puis ton prénom. Seul ton prénom sera montré dans les invitations.</Label><Choice label="Homme" selected={sex==='Homme'} onPress={()=>setSex('Homme')} /><Choice label="Femme" selected={sex==='Femme'} onPress={()=>setSex('Femme')} />{sex&&<><Label style={{fontWeight:'700',marginTop:16,marginBottom:8}}>Quel est ton prénom ?</Label><Field value={firstName} onChangeText={setFirstName} placeholder="Ton prénom" autoCapitalize="words" /></>}</>}
       {step===0&&<>
         <Label style={{color:colors.muted,marginBottom:12}}>Coche les sourates que tu connais déjà par cœur. Ajoute aussi les passages dont tu ne connais qu’une partie. Tu pourras modifier cette liste plus tard.</Label>
         {section('Passages partiellement mémorisés')}

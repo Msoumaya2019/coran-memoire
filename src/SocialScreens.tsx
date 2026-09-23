@@ -1,5 +1,5 @@
-import React,{useEffect,useState} from 'react';
-import {Alert,ScrollView,TextInput,View} from 'react-native';
+import React,{useEffect,useRef,useState} from 'react';
+import {Alert,KeyboardAvoidingView,Platform,ScrollView,TextInput,View} from 'react-native';
 import {Button,Card,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
 import {currentUser} from './services/sync';
@@ -20,14 +20,15 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
   const [appointments,setAppointments]=useState<social.ReviewAppointment[]>([]);
   const [suspension,setSuspension]=useState<social.SocialSuspension|null>(null);
   const [myId,setMyId]=useState('');
-  const [code,setCode]=useState(''),[name,setName]=useState(''),[groupName,setGroupName]=useState('');
+  const [code,setCode]=useState(''),[groupName,setGroupName]=useState('');
+  const scrollRef=useRef<ScrollView>(null);
   const [draft,setDraft]=useState(''),[reason,setReason]=useState(''),[reportTarget,setReportTarget]=useState('');
   const [targetSessions,setTargetSessions]=useState('3'),[appointmentText,setAppointmentText]=useState('');
   const [notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
   const room=selected?.kind==='link'?{linkId:selected.id}:{groupId:selected?.id};
   const load=async()=>{
     const user=await currentUser();setMyId(user?.id??'');
-    const p=await social.ensureSocialProfile();setProfile(p);setName(p.display_name);
+    const p=await social.ensureSocialProfile();setProfile(p);
     const [l,g,s]=await Promise.all([social.listFriendLinks(),social.listGroups(),social.mySocialSuspension()]);
     setLinks(l);setGroups(g);setSuspension(s);
   };
@@ -53,7 +54,8 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
   const otherId=(link:social.FriendLink)=>link.requester_id===myId?link.recipient_id:link.requester_id;
   const sender=(id:string)=>id===myId?'Moi':members.find(m=>m.user_id===id)?.profile?.display_name??links.find(l=>otherId(l)===id)?.other?.display_name??'Membre';
   const send=()=>act(async()=>{await social.sendMessage(room,draft);setDraft('');},'Message envoyé.');
-  return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
+  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+    <ScrollView ref={scrollRef} style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={selected?()=>{setSelected(null);setOverview(null);}:onClose}>← {selected?'Mes amis':'Profil'}</Button>
     <Title>{selected?selected.name:'Mes amis'}</Title>
     {notice?<Card><Label>{notice}</Label></Card>:null}
@@ -61,15 +63,14 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
       {!profile?<Card><Label>Connecte-toi à ton compte pour utiliser les amis.</Label></Card>:<>
         <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label></Card>
         {heading('Mon profil partagé')}
-        <Field value={name} onChangeText={setName} placeholder="Mon nom affiché" />
+        <Label style={{color:colors.muted,fontSize:13,marginBottom:8}}>Ton prénom, modifiable dans Profil, apparaît sur les invitations.</Label>
         <Choice label="Afficher ma présence en ligne" selected={profile.share_online} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_online:!profile.share_online}))} />
         <Choice label="Afficher mon passage actuel" selected={profile.share_location} onPress={()=>act(()=>social.updateSocialProfile({...profile,share_location:!profile.share_location}))} />
-        <Button secondary disabled={busy||name.trim().length<2} onPress={()=>act(()=>social.updateSocialProfile({...profile,display_name:name.trim()}))}>Enregistrer mon nom</Button>
         {heading('Inviter un ami')}
         <Field value={code} onChangeText={setCode} placeholder="Code d’invitation" />
         <Button disabled={busy||!code.trim()} onPress={()=>act(async()=>{await social.sendFriendRequest(code);setCode('');},'Invitation envoyée.')}>Envoyer l’invitation</Button>
         {heading('Invitations reçues')}
-        {links.filter(l=>l.status==='pending'&&l.recipient_id===myId).map(l=><Card key={l.id}><Label>{l.other?.display_name??'Membre'}</Label><Button small onPress={()=>act(()=>social.acceptFriend(l.id))}>Accepter</Button><Button small secondary onPress={()=>act(()=>social.declineFriend(l.id))}>Refuser</Button></Card>)}
+        {links.filter(l=>l.status==='pending'&&l.recipient_id===myId).map(l=><Card key={l.id}><Label>Invitation de {l.other?.display_name??'un membre'}</Label><Button small onPress={()=>act(()=>social.acceptFriend(l.id))}>Accepter</Button><Button small secondary onPress={()=>act(()=>social.declineFriend(l.id))}>Refuser</Button></Card>)}
         {heading('Mes amis')}
         {links.filter(l=>l.status==='accepted').map(l=><Card key={l.id}><Label style={{fontWeight:'700'}}>{l.other?.display_name??'Ami'}</Label><Button small onPress={()=>openLink(l).catch(e=>setNotice(errorText(e)))}>Voir le suivi et discuter</Button><Button small secondary onPress={()=>act(()=>social.removeFriend(l.id))}>Retirer cet ami</Button><Button small secondary onPress={()=>act(()=>social.blockFriend(otherId(l)))}>Bloquer</Button></Card>)}
         {links.filter(l=>l.status==='pending'&&l.requester_id===myId).map(l=><Card key={l.id}><Label>Invitation envoyée à {l.other?.display_name??'un membre'}</Label></Card>)}
@@ -106,11 +107,14 @@ export function FriendsScreen({onClose}:{onClose:()=>void}){
       {suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())?<Card><Label>Messagerie suspendue : {suspension.reason}</Label></Card>:null}
       {messages.map(m=><Card key={m.id}><Label style={{fontSize:12,color:colors.muted}}>{sender(m.sender_id)} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label style={{marginVertical:7}}>{m.body}</Label>{!m.deleted_at?<View style={{flexDirection:'row',gap:8}}>{m.sender_id===myId||selected.kind==='group'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role))?<Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button>:null}{m.sender_id!==myId?<Button small secondary onPress={()=>setReportTarget(m.id)}>Signaler</Button>:null}</View>:null}</Card>)}
       {reportTarget?<Card><Label>Signaler ce message à la modération</Label><Field value={reason} onChangeText={setReason} placeholder="Motif du signalement" /><Button small disabled={reason.trim().length<3} onPress={()=>act(async()=>{await social.reportMessage(reportTarget,reason);setReportTarget('');setReason('');},'Signalement envoyé.')}>Envoyer</Button><Button small secondary onPress={()=>setReportTarget('')}>Annuler</Button></Card>:null}
-      <TextInput style={{minHeight:80,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={setDraft} placeholder="Écris un message à tes amis…" />
-      <Button disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
-      <Button secondary disabled={busy} onPress={()=>act(()=>social.sendMessage(room,'Bravo pour ta régularité !','encouragement'),'Encouragement envoyé.')}>Envoyer un encouragement</Button>
     </>}
-  </ScrollView>;
+    </ScrollView>
+    {selected?<View style={{paddingHorizontal:18,paddingVertical:8,backgroundColor:colors.cream,borderTopWidth:1,borderColor:colors.line}}>
+      <TextInput style={{minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={setDraft} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
+      <Button disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
+      <Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,'Bravo pour ta régularité !','encouragement'),'Encouragement envoyé.')}>Envoyer un encouragement</Button>
+    </View>:null}
+  </KeyboardAvoidingView>;
 }
 
 export function AdminScreen({onClose}:{onClose:()=>void}){

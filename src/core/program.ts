@@ -10,7 +10,9 @@ export type Revision = { id: string; start: number; end: number; due: string; in
 export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
 export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
-export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
+export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
+export type AppTheme = 'classic' | 'feminine';
+export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -36,11 +38,11 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],theme:'classic',updatedAt:'1970-01-01T00:00:00.000Z'});
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),profile:previous?.profile,theme:previous?.theme??'classic',updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }

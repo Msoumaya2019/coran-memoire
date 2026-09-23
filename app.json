@@ -8,7 +8,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {"supportsTablet": true, "bundleIdentifier": "fr.coranmemoire.app"},
-    "android": {"package": "fr.coranmemoire.app"},
+    "android": {"package": "fr.coranmemoire.app", "softwareKeyboardLayoutMode": "resize"},
     "plugins": ["expo-sqlite"]
   }
 }
