@@ -50,8 +50,10 @@ test('le rythme toumoun exige 480 limites Hafs vérifiées et contiguës',()=>{
 
 test('le niveau débutant programme un verset par jour sans répéter un verset connu',()=>{
   assert.equal(p.pacePresets.beginner.pace,'verse1');
-  assert.equal(p.pacePresets.intermediate.pace,'verse3');
+  assert.equal(p.pacePresets.intermediate.pace,'halfPage');
   assert.equal(p.pacePresets.intensive.pace,'page');
+  assert.deepEqual(p.beginnerPaces,['verse1','verse2','verse3','verse4','verse5']);
+  assert.deepEqual(p.intensivePaces,['page','page2','quarter']);
   let state=p.defaultState();
   state.goal={label:'Passage',ranges:[{start:6230,end:6236}]};
   state.pace=p.pacePresets.beginner.pace;
@@ -63,6 +65,51 @@ test('le niveau débutant programme un verset par jour sans répéter un verset 
   assert.deepEqual(sessions.map(s=>s.start),[6230,6231,6233,6234,6235,6236]);
   assert(sessions.every(s=>s.start===s.end&&s.unit==='verse1'));
   assert.deepEqual(sessions.map(s=>s.date),[monday,p.addDays(monday,1),p.addDays(monday,2),p.addDays(monday,3),p.addDays(monday,4),p.addDays(monday,5)]);
+});
+
+test('les objectifs proposés suivent des limites exactes depuis An-Nâs',()=>{
+  const ten=p.goalFromPreset('lastTen');
+  const yasin=p.goalFromPreset('toYasin');
+  const half=p.goalFromPreset('half');
+  assert.deepEqual(ten.ranges,[{start:q.surahs[104].start,end:6236}]);
+  assert.deepEqual(yasin.ranges,[{start:q.surahs[35].start,end:6236}]);
+  assert.deepEqual(half.ranges,[{start:q.juzs[15].start,end:6236}]);
+  for(const goal of [ten,yasin,half]){
+    assert.equal(goal.direction,'fromNas');
+    const state={...p.defaultState(),goal};
+    assert.equal(p.learningOrderIds(state)[0],q.surahs[113].start);
+  }
+  assert.equal(p.goalFromPreset('sabbih').ranges[0].start,q.hizbs[59].start);
+  assert.equal(p.goalFromPreset('amma').ranges[0].start,q.juzs[29].start);
+});
+
+test('cocher un ensemble connu conserve les passages partiels et évite les doublons',()=>{
+  const surah=q.surahs[113];
+  let state=p.defaultState();
+  state=p.markKnowledge(state,{start:surah.start,end:surah.start+1},'perfect');
+  assert.equal(p.isRangeKnown(state,surah),false);
+  state=p.toggleKnownRange(state,surah);
+  assert.equal(p.isRangeKnown(state,surah),true);
+  assert.equal(p.memorizedIds(state).filter(id=>id>=surah.start&&id<=surah.end).length,surah.count);
+  state=p.toggleKnownRange(state,surah);
+  assert.equal(p.isRangeKnown(state,surah),false);
+});
+
+test('2 à 5 versets et deux pages créent des séances sans doublons',()=>{
+  for(const count of [2,3,4,5]){
+    const state=p.generateProgram({...p.defaultState(),goal:{label:'Test',ranges:[{start:6200,end:6220}]},pace:`verse${count}`},monday,1);
+    const ids=state.sessions.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));
+    assert.deepEqual(ids,Array.from({length:count},(_,i)=>6200+i));
+  }
+  const goal={label:'Trois pages',ranges:[{start:q.pageRange(1).start,end:q.pageRange(3).end}]};
+  const state=p.generateProgram({...p.defaultState(),goal,pace:'page2'},monday,1);
+  const ids=state.sessions.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));
+  assert.deepEqual([...new Set(ids.map(q.pageOf))],[1,2]);
+  assert.equal(new Set(ids).size,ids.length);
+  const reverse=p.generateProgram({...p.defaultState(),goal:{label:'Fin du Coran',ranges:[{start:q.pageRange(602).start,end:6236}],direction:'fromNas'},pace:'page2'},monday,1);
+  const reverseIds=reverse.sessions.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));
+  assert.deepEqual([...new Set(reverseIds.map(q.pageOf))].sort((a,b)=>a-b),[603,604]);
+  assert.equal(new Set(reverseIds).size,reverseIds.length);
 });
 
 test('corpus Hafs et limites officielles cohérents',()=>{

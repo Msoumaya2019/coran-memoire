@@ -6,8 +6,8 @@ L’icône de l’application provient de l’image fournie par le propriétaire
 
 ## État de la version
 
-- Questionnaire initial : sourates, juz’, hizb, passages partiels, niveaux de maîtrise, objectif, rythme et jours.
-- Rythme de **1 verset par jour** lorsque les sept jours sont sélectionnés. Trois niveaux prêts à choisir : Débutant (1 verset par séance), Intermédiaire (3 versets) et Intensif (1 page). Le choix manuel du rythme reste disponible.
+- Questionnaire initial : cases à cocher pour les sourates, juz’ et hizb connus par cœur, avec saisie des passages partiels. Les objectifs sont présentés des dix dernières sourates jusqu’au Coran entier, puis l’objectif personnalisé.
+- Trois niveaux de rythme : Débutant (1 à 5 versets par séance), Intermédiaire (une demi-page) et Intensif (1 page, 2 pages ou 1 rub‘). Une séance quotidienne est possible en sélectionnant les sept jours.
 - Programme durable dans SQLite : passages connus exclus, historique conservé lors des recalculs, report des séances. Pour l’objectif « Tout le Coran », choix entre commencer par Al-Fatiha ou par An-Nâs, puis parcourir les sourates précédentes en gardant les versets de chaque sourate dans leur ordre.
 - Lecteur page par page du mushaf Hafs 1405, avec glissement horizontal dans les deux sens, repères visuels des versets de la séance et mode récitation masqué.
 - Révisions espacées indépendantes du nouvel apprentissage.

@@ -1,24 +1,41 @@
-import { expand, hizbs, normalizeRanges, pageOf, pageRange, quarters, halves, Range, surahAt, totalVolume, volume, weights } from './quran';
+import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, halves, Range, surahAt, surahs, totalVolume, volume, weights } from './quran';
 import { verifiedToumouns } from './toumoun';
 
 export type Mastery = 'perfect' | 'review' | 'learning';
-export type Pace = 'verse1' | 'verse3' | 'verse5' | 'halfPage' | 'page' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
+export type Pace = 'verse1' | 'verse2' | 'verse3' | 'verse4' | 'verse5' | 'halfPage' | 'page' | 'page2' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
 export type PacePreset = 'beginner' | 'intermediate' | 'intensive';
 export type SessionStatus = 'todo' | 'done' | 'postponed';
 export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
 export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
+export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
 export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string };
 
-export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse3:'3 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
+export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
-  beginner:{label:'Débutant',pace:'verse1',description:'1 verset par séance'},
-  intermediate:{label:'Intermédiaire',pace:'verse3',description:'3 versets par séance'},
-  intensive:{label:'Intensif',pace:'page',description:'1 page par séance'},
+  beginner:{label:'Débutant',pace:'verse1',description:'1 à 5 versets par séance'},
+  intermediate:{label:'Intermédiaire',pace:'halfPage',description:'Une demi-page par séance'},
+  intensive:{label:'Intensif',pace:'page',description:'1 page, 2 pages ou 1 rub‘ par séance'},
 };
+export const beginnerPaces: Pace[] = ['verse1','verse2','verse3','verse4','verse5'];
+export const intensivePaces: Pace[] = ['page','page2','quarter'];
 export const availablePaces = (Object.keys(paceLabels) as Pace[]).filter(p => p !== 'toumoun' || verifiedToumouns !== null);
 export const weekdays = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+export const goalPresetLabels: Record<GoalPreset,string> = {
+  lastTen:'Les 10 dernières sourates',sabbih:'Hizb Sabbih',amma:'Juz’ ‘Amma',toYasin:'Jusqu’à la sourate Ya-Sîn',half:'La moitié du Coran',all:'Tout le Coran',
+};
+export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fromNas'):Goal {
+  const ranges:Record<GoalPreset,Range[]> = {
+    lastTen:[{start:surahs[104].start,end:surahs[113].end}],
+    sabbih:[hizbs[59]],
+    amma:[juzs[29]],
+    toYasin:[{start:surahs[35].start,end:surahs[113].end}],
+    half:[{start:juzs[15].start,end:juzs[29].end}],
+    all:[{start:1,end:6236}],
+  };
+  return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
+}
 export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],updatedAt:'1970-01-01T00:00:00.000Z'});
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
@@ -35,6 +52,13 @@ export function markKnowledge(state: AppState, range: Range, mastery: Mastery): 
   const knowledge={...state.knowledge};
   for(let id=range.start;id<=range.end;id++) knowledge[id]=mastery;
   return touch({...state,knowledge});
+}
+export function isRangeKnown(state:AppState,range:Range):boolean {
+  for(let id=range.start;id<=range.end;id++)if(state.knowledge[id]!=='perfect'&&state.knowledge[id]!=='review')return false;
+  return true;
+}
+export function toggleKnownRange(state:AppState,range:Range):AppState {
+  return markKnowledge(state,range,isRangeKnown(state,range)?'learning':'perfect');
 }
 export function goalIds(state: AppState): number[] {return expand(state.goal.ranges);}
 export function learningOrderIds(state: AppState): number[] {
@@ -60,8 +84,17 @@ export function validGoal(ranges: Range[]): boolean {
 
 function nextChunk(remaining: number[], pace: Pace): number[] {
   if(!remaining.length)return [];
-  if(pace==='verse1'||pace==='verse3'||pace==='verse5') return remaining.slice(0,pace==='verse1'?1:pace==='verse3'?3:5);
+  if(pace.startsWith('verse')) return remaining.slice(0,Number(pace.slice(5)));
   const first=remaining[0];
+  if(pace==='page2') {
+    const selectedPages=new Set<number>(),out:number[]=[];
+    for(const id of remaining){
+      const page=pageOf(id);
+      if(!selectedPages.has(page)&&selectedPages.size===2)break;
+      selectedPages.add(page);out.push(id);
+    }
+    return out;
+  }
   if(pace==='halfPage'||pace==='page') {
     const pr=pageRange(pageOf(first));
     const within=takePrefix(remaining,id=>id>=pr.start&&id<=pr.end);

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Image, Linking, PanResponder, Pressable, ScrollView, StatusBar, Text, View, useWindowDimensions } from 'react-native';
-import { Button, Card, Choice, colors, Field, Label, Title } from './ui/theme';
-import { AppState, availablePaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalIds, gradeRevision, LearningDirection, markKnowledge, Mastery, Pace, paceLabels, pacePresets, PacePreset, postponeSession, progress, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, touch, validGoal, weekdays } from './core/program';
-import { verifiedToumouns } from './core/toumoun';
+import { Button, Card, CheckChoice, Choice, colors, Field, Label, Title } from './ui/theme';
+import { AppState, beginnerPaces, completeSession, dateKey, dayOf, defaultState, generateProgram, goalFromPreset, goalIds, GoalPreset, goalPresetLabels, gradeRevision, intensivePaces, isRangeKnown, LearningDirection, markKnowledge, paceLabels, pacePresets, PacePreset, postponeSession, progress, resetAllProgress, seedInitialRevisions, Session, stats, todayLocal, toggleKnownRange, touch, validGoal, weekdays } from './core/program';
 import { pageAfterSwipe } from './core/pageNavigation';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, Range, reference, surahs, verseAt, verseId, verses } from './core/quran';
 import { loadState, saveState } from './services/storage';
@@ -12,7 +11,6 @@ import boundsRaw from './data/bounds.json';
 
 type Tab='Accueil'|'Coran'|'Programme'|'Progrès'|'Profil';
 type Reader={range:Range;sessionId?:string;revisionId?:string};
-const isKnown=(v:Mastery|undefined)=>v==='perfect'||v==='review';
 const section=(title:string)=><Label style={{fontWeight:'700',fontSize:19,marginBottom:10,marginTop:12}}>{title}</Label>;
 const percent=(n:number)=>`${Math.round(n*100)} %`;
 const dateText=(key:string)=>new Date(`${key}T12:00:00`).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
@@ -139,13 +137,14 @@ function ProfileScreen({state,update,account,setAccount,setNotice,openKnowledge,
 }
 
 function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s:AppState)=>void;step:number;setStep:(n:number|null)=>void;onDone:()=>void}){
-  const [mastery,setMastery]=useState<Mastery>('perfect');
   const [partSurah,setPartSurah]=useState(''),[partStart,setPartStart]=useState(''),[partEnd,setPartEnd]=useState('');
-  const [kind,setKind]=useState<'all'|'amma'|'sabbih'|'juz'|'hizb'|'custom'>(state.goal.label==='Tout le Coran'?'all':state.goal.label==='Hizb Sabbih'?'sabbih':state.goal.label==='Juz’ ‘Amma'?'amma':'custom');
-  const [direction,setDirection]=useState<LearningDirection>(state.goal.direction??'fromStart');
+  const [partialRanges,setPartialRanges]=useState<Range[]>([]);
+  const [paceLevel,setPaceLevel]=useState<PacePreset>(state.pace==='halfPage'?'intermediate':intensivePaces.includes(state.pace)?'intensive':'beginner');
+  const [kind,setKind]=useState<GoalPreset|'custom'>(()=>(Object.keys(goalPresetLabels) as GoalPreset[]).find(key=>goalPresetLabels[key]===state.goal.label)??'custom');
+  const [direction,setDirection]=useState<LearningDirection>(state.goal.direction??'fromNas');
   const [selectedJuz,setSelectedJuz]=useState<number[]>([]),[selectedHizb,setSelectedHizb]=useState<number[]>([]),[selectedSurahs,setSelectedSurahs]=useState<number[]>([]);
   const [customSurah,setCustomSurah]=useState(''),[customStart,setCustomStart]=useState(''),[customEnd,setCustomEnd]=useState('');
-  const [customRanges,setCustomRanges]=useState<Range[]>([]);
+  const [customRanges,setCustomRanges]=useState<Range[]>(state.goal.label==='Objectif personnalisé'||state.goal.label.startsWith('Juz’ ')||state.goal.label.startsWith('Hizb ')?state.goal.ranges:[]);
   const [error,setError]=useState('');
   const toggle=(list:number[],value:number,set:(v:number[])=>void)=>set(list.includes(value)?list.filter(x=>x!==value):[...list,value]);
   const addPartial=(goal:boolean)=>{
@@ -153,49 +152,42 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
     const first=verseId(s,a),last=verseId(s,b);
     if(!first||!last||first>last){setError('Indique une sourate et des versets valides.');return;}
     if(goal){setCustomRanges(normalizeRanges([...customRanges,{start:first,end:last}]));setCustomSurah('');setCustomStart('');setCustomEnd('');}
-    else{update(markKnowledge(state,{start:first,end:last},mastery));setPartSurah('');setPartStart('');setPartEnd('');}
+    else{update(markKnowledge(state,{start:first,end:last},'perfect'));setPartialRanges(normalizeRanges([...partialRanges,{start:first,end:last}]));setPartSurah('');setPartStart('');setPartEnd('');}
     setError('');
   };
-  const applyKnown=(range:Range)=>update(markKnowledge(state,range,mastery));
-  const selectedLevel=(r:Range)=>{let count=0;for(let id=r.start;id<=r.end;id++)if(state.knowledge[id]===mastery)count++;return count===r.end-r.start+1;};
+  const selectedLevel=(r:Range)=>isRangeKnown(state,r);
+  const applyKnown=(range:Range)=>update(toggleKnownRange(state,range));
+  const choosePaceLevel=(level:PacePreset)=>{setPaceLevel(level);update(touch({...state,pace:pacePresets[level].pace}));};
   const next=()=>{
     setError('');
     if(step===0){setStep(1);return;}
     if(step===1){
-      let ranges:Range[]=[],label='';
-      if(kind==='all'){ranges=[{start:1,end:6236}];label='Tout le Coran';}
-      if(kind==='amma'){ranges=[juzs[29]];label='Juz’ ‘Amma';}
-      if(kind==='sabbih'){ranges=[hizbs[59]];label='Hizb Sabbih';}
-      if(kind==='juz'){ranges=selectedJuz.map(n=>juzs[n-1]);label=selectedJuz.length===1?`Juz’ ${selectedJuz[0]}`:`${selectedJuz.length} juz’`;}
-      if(kind==='hizb'){ranges=selectedHizb.map(n=>hizbs[n-1]);label=selectedHizb.length===1?`Hizb ${selectedHizb[0]}`:`${selectedHizb.length} hizb`;}
-      if(kind==='custom'){ranges=[...selectedSurahs.map(n=>surahs[n-1]),...selectedHizb.map(n=>hizbs[n-1]),...customRanges];label='Objectif personnalisé';}
-      ranges=normalizeRanges(ranges);
+      if(kind!=='custom'){const goal=goalFromPreset(kind,kind==='all'?direction:'fromNas');update(touch({...state,goal}));setStep(2);return;}
+      const ranges=normalizeRanges([...selectedJuz.map(n=>juzs[n-1]),...selectedSurahs.map(n=>surahs[n-1]),...selectedHizb.map(n=>hizbs[n-1]),...customRanges]);
       if(!validGoal(ranges)){setError('Choisis au moins l’équivalent d’un hizb complet. Les passages déjà mémorisés comptent dans cet objectif.');return;}
-      update(touch({...state,goal:{label,ranges,direction:kind==='all'?direction:'fromStart'}}));setStep(2);return;
+      update(touch({...state,goal:{label:'Objectif personnalisé',ranges,direction:'fromStart'}}));setStep(2);return;
     }
-    if(step===2){setStep(3);return;}
+    if(step===2){const allowed=paceLevel==='beginner'?beginnerPaces:paceLevel==='intermediate'?['halfPage']:intensivePaces;if(!allowed.includes(state.pace)){setError('Choisis une quantité parmi celles du niveau sélectionné.');return;}setStep(3);return;}
     if(!state.learningDays.length){setError('Sélectionne au moins un jour d’apprentissage.');return;}
     const done=generateProgram(seedInitialRevisions(touch({...state,onboardingDone:true})));update(done);onDone();
   };
   return <><View style={{paddingHorizontal:18,paddingBottom:8}}><Label style={{fontSize:12,color:colors.gold,fontWeight:'700'}}>CONFIGURATION · {step+1}/4</Label><Title>{['Que connais-tu déjà ?','Quel est ton objectif ?','Quel rythme souhaites-tu ?','Quels jours souhaites-tu apprendre ?'][step]}</Title></View>
     <ScrollView contentContainerStyle={{paddingHorizontal:18,paddingBottom:15}}>
       {step===0&&<>
-        <Label style={{color:colors.muted,marginBottom:12}}>Choisis un niveau puis touche les sourates, juz’ ou hizb correspondants. Tu pourras les modifier plus tard.</Label>
-        {([['perfect','Je le connais parfaitement'],['review','Je le connais, à réviser'],['learning','Je ne le connais pas encore']] as [Mastery,string][]).map(([value,label])=><Choice key={value} label={label} selected={mastery===value} onPress={()=>setMastery(value)} />)}
-        {section('Passage partiellement mémorisé')}
-        <Field value={partSurah} onChangeText={setPartSurah} placeholder="Numéro de sourate (1–114)" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={partStart} onChangeText={setPartStart} placeholder="Verset de début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={partEnd} onChangeText={setPartEnd} placeholder="Verset de fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(false)}>Ajouter ce passage</Button>
-        {section('114 sourates')}{surahs.map(s=><Choice key={s.number} label={`${s.number}. ${s.name}`} subtitle={s.meaning} selected={selectedLevel(s)} onPress={()=>applyKnown(s)} />)}
-        {section('30 juz’')}{juzs.map(j=><Choice key={j.number} label={`Juz’ ${j.number}`} selected={selectedLevel(j)} onPress={()=>applyKnown(j)} />)}
-        {section('60 hizb')}{hizbs.map(h=><Choice key={h.number} label={`Hizb ${h.number}`} selected={selectedLevel(h)} onPress={()=>applyKnown(h)} />)}
+        <Label style={{color:colors.muted,marginBottom:12}}>Coche les sourates que tu connais déjà par cœur. Ajoute aussi les passages dont tu ne connais qu’une partie. Tu pourras modifier cette liste plus tard.</Label>
+        {section('Passages partiellement mémorisés')}
+        <Field value={partSurah} onChangeText={setPartSurah} placeholder="Numéro de sourate (1–114)" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={partStart} onChangeText={setPartStart} placeholder="Verset de début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={partEnd} onChangeText={setPartEnd} placeholder="Verset de fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(false)}>Ajouter ce passage</Button>{partialRanges.map((r,i)=><Label key={i} style={{color:colors.muted,fontSize:13,marginBottom:6}}>Ajouté : {reference(r)}</Label>)}
+        {section('Sourates connues par cœur')}{surahs.map(s=><CheckChoice key={s.number} label={`${s.number}. ${s.name}`} subtitle={s.meaning} selected={selectedLevel(s)} onPress={()=>applyKnown(s)} />)}
+        {section('Juz’ déjà connus')}{juzs.map(j=><CheckChoice key={j.number} label={`Juz’ ${j.number}`} selected={selectedLevel(j)} onPress={()=>applyKnown(j)} />)}
+        {section('Hizb déjà connus')}{hizbs.map(h=><CheckChoice key={h.number} label={`Hizb ${h.number}`} selected={selectedLevel(h)} onPress={()=>applyKnown(h)} />)}
       </>}
       {step===1&&<>
-        {([['all','Mémoriser tout le Coran'],['amma','Mémoriser Juz’ ‘Amma'],['sabbih','Mémoriser Hizb Sabbih'],['juz','Un ou plusieurs juz’'],['hizb','Un ou plusieurs hizb'],['custom','Objectif personnalisé']] as [typeof kind,string][]).map(([value,label])=><Choice key={value} label={label} selected={kind===value} onPress={()=>setKind(value)} />)}
+        {([['lastTen','Je souhaite apprendre les petites sourates (les 10 dernières)'],['sabbih','Je souhaite apprendre le Hizb Sabbih'],['amma','Je souhaite apprendre le Juz’ ‘Amma'],['toYasin','Je souhaite apprendre jusqu’à la sourate Ya-Sîn'],['half','Je souhaite mémoriser la moitié du Coran'],['all','Je souhaite mémoriser tout le Coran'],['custom','Créer un objectif personnalisé']] as [typeof kind,string][]).map(([value,label])=><Choice key={value} label={label} selected={kind===value} onPress={()=>setKind(value)} />)}
+        {(kind==='lastTen'||kind==='sabbih'||kind==='amma'||kind==='toYasin'||kind==='half')&&<Label style={{color:colors.muted,fontSize:13,marginBottom:8}}>Apprentissage depuis An-Nâs, en remontant sourate après sourate.</Label>}
         {kind==='all'&&<>{section('Par où commencer ?')}<Choice label="Depuis Al-Fatiha" subtitle="Sourates 1 à 114" selected={direction==='fromStart'} onPress={()=>setDirection('fromStart')} /><Choice label="Depuis An-Nâs" subtitle="Sourates 114 à 1 ; versets de chaque sourate dans l’ordre" selected={direction==='fromNas'} onPress={()=>setDirection('fromNas')} /></>}
-        {kind==='juz'&&<>{section('Sélectionne les juz’')}{juzs.map(j=><Choice key={j.number} label={`Juz’ ${j.number}`} selected={selectedJuz.includes(j.number)} onPress={()=>toggle(selectedJuz,j.number,setSelectedJuz)} />)}</>}
-        {(kind==='hizb'||kind==='custom')&&<>{section('Sélectionne les hizb')}{hizbs.map(h=><Choice key={h.number} label={`Hizb ${h.number}`} selected={selectedHizb.includes(h.number)} onPress={()=>toggle(selectedHizb,h.number,setSelectedHizb)} />)}</>}
-        {kind==='custom'&&<>{section('Sourates')}{surahs.map(s=><Choice key={s.number} label={`${s.number}. ${s.name}`} selected={selectedSurahs.includes(s.number)} onPress={()=>toggle(selectedSurahs,s.number,setSelectedSurahs)} />)}{section('Passage précis')}<Field value={customSurah} onChangeText={setCustomSurah} placeholder="Numéro de sourate" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={customStart} onChangeText={setCustomStart} placeholder="Verset début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={customEnd} onChangeText={setCustomEnd} placeholder="Verset fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(true)}>Ajouter le passage</Button>{customRanges.map((r,i)=><Label key={i}>{reference(r)}</Label>)}</>}
+        {kind==='custom'&&<>{section('Juz’')}{juzs.map(j=><CheckChoice key={j.number} label={`Juz’ ${j.number}`} selected={selectedJuz.includes(j.number)} onPress={()=>toggle(selectedJuz,j.number,setSelectedJuz)} />)}{section('Hizb')}{hizbs.map(h=><CheckChoice key={h.number} label={`Hizb ${h.number}`} selected={selectedHizb.includes(h.number)} onPress={()=>toggle(selectedHizb,h.number,setSelectedHizb)} />)}{section('Sourates')}{surahs.map(s=><CheckChoice key={s.number} label={`${s.number}. ${s.name}`} selected={selectedSurahs.includes(s.number)} onPress={()=>toggle(selectedSurahs,s.number,setSelectedSurahs)} />)}{section('Passage précis')}<Field value={customSurah} onChangeText={setCustomSurah} placeholder="Numéro de sourate" keyboardType="number-pad" /><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Field value={customStart} onChangeText={setCustomStart} placeholder="Verset début" keyboardType="number-pad" /></View><View style={{flex:1}}><Field value={customEnd} onChangeText={setCustomEnd} placeholder="Verset fin" keyboardType="number-pad" /></View></View><Button secondary onPress={()=>addPartial(true)}>Ajouter le passage</Button>{customRanges.map((r,i)=><Label key={i}>{reference(r)}</Label>)}</>}
       </>}
-      {step===2&&<><Label style={{color:colors.muted,marginBottom:12}}>Choisis un niveau ou ajuste librement la quantité à apprendre. Chaque séance est placée sur les jours que tu choisiras à l’étape suivante.</Label>{section('Un niveau pour commencer')}{(Object.keys(pacePresets) as PacePreset[]).map(key=><Choice key={key} label={pacePresets[key].label} subtitle={pacePresets[key].description} selected={state.pace===pacePresets[key].pace} onPress={()=>update(touch({...state,pace:pacePresets[key].pace}))} />)}{section('Ou choisis ta quantité par séance')}{availablePaces.map(p=><Choice key={p} label={paceLabels[p]} selected={state.pace===p} onPress={()=>update(touch({...state,pace:p}))} />)}<Label style={{color:colors.muted,fontSize:13,marginBottom:12}}>Pour apprendre un verset chaque jour, choisis « 1 verset », puis sélectionne les sept jours.</Label>{!verifiedToumouns&&<Card><Label style={{color:colors.muted,fontSize:13}}>Les 480 toumoun attendent une source Hafs vérifiée pour leurs limites exactes. Ce rythme sera disponible dès que ces données seront ajoutées.</Label></Card>}</>}
+      {step===2&&<><Label style={{color:colors.muted,marginBottom:12}}>Choisis d’abord ton niveau. Les quantités proposées correspondent ensuite à ce niveau. Tu choisiras les jours à l’étape suivante.</Label>{(Object.keys(pacePresets) as PacePreset[]).map(key=><Choice key={key} label={pacePresets[key].label} subtitle={pacePresets[key].description} selected={paceLevel===key} onPress={()=>choosePaceLevel(key)} />)}{paceLevel==='beginner'&&<>{section('Combien de versets par séance ?')}{beginnerPaces.map(p=><Choice key={p} label={paceLabels[p]} selected={state.pace===p} onPress={()=>update(touch({...state,pace:p}))} />)}</>}{paceLevel==='intermediate'&&<Card><Label>Une demi-page par séance.</Label></Card>}{paceLevel==='intensive'&&<>{section('Combien par séance ?')}{intensivePaces.map(p=><Choice key={p} label={paceLabels[p]} selected={state.pace===p} onPress={()=>update(touch({...state,pace:p}))} />)}</>}</>}
       {step===3&&<><Label style={{color:colors.muted,marginBottom:12}}>Les jours non sélectionnés restent libres pour les révisions.</Label>{[1,2,3,4,5,6,0].map(d=><Choice key={d} label={weekdays[d]} selected={state.learningDays.includes(d)} onPress={()=>update(touch({...state,learningDays:state.learningDays.includes(d)?state.learningDays.filter(x=>x!==d):[...state.learningDays,d]}))} />)}</>}
       {!!error&&<Label style={{color:colors.red,marginVertical:10}}>{error}</Label>}
     </ScrollView>
