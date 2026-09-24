@@ -126,6 +126,17 @@ export async function signedAudioUrl(path:string):Promise<string>{
   if(error||!data)throw error??new Error('Audio indisponible.');
   return data.signedUrl;
 }
+export async function deleteMyRecitation(recitation:RemoteRecitation):Promise<void>{
+  if(!supabase)throw new Error('Connexion requise.');
+  const {data:{session}}=await supabase.auth.getSession();
+  if(!session||session.user.id!==recitation.user_id)throw new Error('Cette récitation ne t’appartient pas.');
+  const {error:fileError}=await supabase.storage.from('recitations').remove([recitation.storage_path]);
+  if(fileError)throw fileError;
+  const {error:rowError}=await supabase.from('recitations').delete().eq('id',recitation.id).eq('user_id',session.user.id);
+  if(rowError)throw rowError;
+  const local=localRecitations(session.user.id).find(item=>item.id===recitation.id);
+  if(local)deleteLocalRecitation(local);
+}
 
 export async function publishCorrections(recitation:RemoteRecitation,items:{verseId:number;comment:string;voicePath?:string|null}[]):Promise<void>{
   if(!supabase)throw new Error('Compte indisponible.');
@@ -137,5 +148,15 @@ export async function publishCorrections(recitation:RemoteRecitation,items:{vers
     return {recitation_id:recitation.id,verse_id:item.verseId,comment:item.comment.trim()||null,voice_path:item.voicePath??null,admin_id:user.id};
   });
   const {error}=await supabase.from('recitation_corrections').insert(rows);
+  if(error)throw error;
+}
+
+export async function finalizeRecitationCorrection(recitation:RemoteRecitation,requestId:string,items:{verseId:number;comment:string}[],generalComment:string,voicePath:string|null):Promise<void>{
+  if(!supabase)throw new Error('Compte indisponible.');
+  for(const item of items)if(item.verseId<recitation.start_verse_id||item.verseId>recitation.end_verse_id||!verseAt(item.verseId))throw new Error('Verset hors de la récitation.');
+  const {error}=await supabase.rpc('finalize_recitation_correction',{
+    p_recitation_id:recitation.id,p_request_id:requestId,p_verses:items,
+    p_general_comment:generalComment.trim()||null,p_voice_path:voicePath,
+  });
   if(error)throw error;
 }

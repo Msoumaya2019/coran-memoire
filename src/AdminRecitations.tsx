@@ -3,7 +3,7 @@ import {Pressable,ScrollView,View} from 'react-native';
 import {createAudioPlayer} from 'expo-audio';
 import {Button,Card,colors,Field,Label,Title} from './ui/theme';
 import {reference,surahs,verseAt} from './core/quran';
-import {adminCorrectionIds,GeneralFeedback,listCorrections,listGeneralFeedback,listRemoteRecitations,markRecitationListened,publishCorrections,publishGeneralFeedback,RemoteRecitation,signedAudioUrl,VerseCorrection} from './services/recitations';
+import {adminCorrectionIds,finalizeRecitationCorrection,GeneralFeedback,listCorrections,listGeneralFeedback,listRemoteRecitations,markRecitationListened,RemoteRecitation,signedAudioUrl,VerseCorrection} from './services/recitations';
 import {adminProfiles,isSocialAdmin} from './services/social';
 import {AdminVoiceRecorder} from './AdminVoiceRecorder';
 
@@ -12,6 +12,7 @@ export function AdminRecitations({onClose}:{onClose:()=>void}){
   const [selected,setSelected]=useState<RemoteRecitation|null>(null),[selectedVerses,setSelectedVerses]=useState<number[]>([]),[comments,setComments]=useState<Record<string,string>>({}),[history,setHistory]=useState<VerseCorrection[]>([]),[feedback,setFeedback]=useState<GeneralFeedback[]>([]),[generalComment,setGeneralComment]=useState(''),[voicePath,setVoicePath]=useState<string|null>(null);
   const [filter,setFilter]=useState<'all'|'pending'|'corrected'>('pending'),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[playing,setPlaying]=useState(false),[position,setPosition]=useState(0);
   const player=useRef<ReturnType<typeof createAudioPlayer>|null>(null);
+  const correctionRequestId=useRef<string|null>(null);
   useEffect(()=>()=>{player.current?.release();},[]);
   useEffect(()=>{const timer=setInterval(()=>{if(player.current)setPosition(player.current.currentTime);},500);return()=>clearInterval(timer);},[]);
   const load=async()=>{
@@ -22,7 +23,7 @@ export function AdminRecitations({onClose}:{onClose:()=>void}){
   };
   useEffect(()=>{load().catch(error=>setMessage(String(error)));},[]);
   const open=async(item:RemoteRecitation)=>{
-    player.current?.release();player.current=null;setPlaying(false);setPosition(0);setSelected(item);setSelectedVerses([]);setComments({});setGeneralComment('');setVoicePath(null);
+    player.current?.release();player.current=null;setPlaying(false);setPosition(0);setSelected(item);setSelectedVerses([]);setComments({});setGeneralComment('');setVoicePath(null);correctionRequestId.current=null;
     try{const [verseRows,generalRows]=await Promise.all([listCorrections(item.id),listGeneralFeedback(item.id)]);setHistory(verseRows);setFeedback(generalRows);}catch(error){setMessage(String(error));}
   };
   const play=async()=>{
@@ -35,8 +36,9 @@ export function AdminRecitations({onClose}:{onClose:()=>void}){
     if(!selected||(!selectedVerses.length&&!generalComment.trim()&&!voicePath))return;
     setBusy(true);
     try{
-      if(selectedVerses.length)await publishCorrections(selected,selectedVerses.map(verseId=>({verseId,comment:comments[verseId]?.trim()||'À retravailler',voicePath})));
-      if(generalComment.trim()||voicePath)await publishGeneralFeedback(selected.id,generalComment,voicePath);
+      correctionRequestId.current=correctionRequestId.current??`${Date.now()}-${Math.random().toString(36).slice(2)}-${selected.id}`;
+      await finalizeRecitationCorrection(selected,correctionRequestId.current,selectedVerses.map(verseId=>({verseId,comment:comments[verseId]?.trim()||'À retravailler'})),generalComment,voicePath);
+      correctionRequestId.current=null;
       setMessage('Correction validée pour cet élève. Les versets signalés rejoindront ses révisions prioritaires.');
       setSelectedVerses([]);setComments({});setGeneralComment('');setVoicePath(null);setHistory(await listCorrections(selected.id));setFeedback(await listGeneralFeedback(selected.id));await load();
     }catch(error){setMessage(String(error));}finally{setBusy(false);}

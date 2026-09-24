@@ -11,7 +11,7 @@ const recordingOptions={...RecordingPresets.HIGH_QUALITY,numberOfChannels:1,bitR
 const duration=(ms:number)=>`${Math.floor(ms/60000).toString().padStart(2,'0')}:${Math.floor(ms/1000%60).toString().padStart(2,'0')}`;
 const localUserId=async()=>{const {data:{session}}=await supabase!.auth.getSession();return session?.user.id;};
 
-export function RecitationRecorder({range,onSaved}:{range:Range;onSaved?:(item:LocalRecitation)=>void}){
+export function RecitationRecorder({range,onSaved,onShare}:{range:Range;onSaved?:(item:LocalRecitation)=>void;onShare?:(item:LocalRecitation)=>void}){
   const recorder=useAudioRecorder(recordingOptions);
   const recorderState=useAudioRecorderState(recorder,250);
   const [phase,setPhase]=useState<'idle'|'recording'|'paused'|'saved'>('idle');
@@ -66,13 +66,13 @@ export function RecitationRecorder({range,onSaved}:{range:Range;onSaved?:(item:L
     if(!item)return;
     player.current?.release();player.current=createAudioPlayer({uri:item.uri});player.current.play();
   };
-  return <Card><Label style={{fontWeight:'700',fontSize:17}}>Écoute ma récitation</Label><Label style={{color:colors.muted,fontSize:13,marginTop:5}}>{reference(range)} · enregistrement personnel</Label>
+  return <Card><Label style={{fontWeight:'700',fontSize:17}}>Enregistrer ma voix</Label><Label style={{color:colors.muted,fontSize:13,marginTop:5}}>{reference(range)} · enregistrement personnel</Label>
     {(phase==='recording'||phase==='paused')&&<Label style={{fontSize:20,color:colors.red,marginTop:10}}>{phase==='recording'?'● Enregistrement':'Ⅱ En pause'} · {duration(recorderState.durationMillis)}</Label>}
     {phase==='idle'&&<Button disabled={busy} onPress={begin}>● Enregistrer ma voix</Button>}
     {phase==='recording'&&<Button secondary disabled={busy} onPress={()=>{recorder.pause();setPhase('paused');}}>Pause</Button>}
     {phase==='paused'&&<Button secondary disabled={busy} onPress={()=>{recorder.record();setPhase('recording');}}>Reprendre</Button>}
     {(phase==='recording'||phase==='paused')&&<><Button disabled={busy} onPress={()=>finish(true)}>Terminer et sauvegarder</Button><Button secondary disabled={busy} onPress={()=>finish(false)}>Supprimer cet enregistrement</Button></>}
-    {phase==='saved'&&<><Button secondary onPress={playback}>Réécouter</Button><Button secondary onPress={()=>{player.current?.pause();setItem(null);setPhase('idle');}}>Enregistrer une autre récitation</Button></>}
+    {phase==='saved'&&<><Button secondary onPress={playback}>Réécouter</Button>{item&&onShare&&<Button secondary onPress={()=>onShare(item)}>Partager avec un ami</Button>}<Button secondary onPress={()=>{player.current?.pause();setItem(null);setPhase('idle');}}>Enregistrer une autre récitation</Button></>}
     {!!message&&<Label style={{color:colors.muted,fontSize:12,marginTop:8}}>{message}</Label>}
   </Card>;
 }

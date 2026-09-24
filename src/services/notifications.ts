@@ -2,16 +2,19 @@ import { AppState as DeviceAppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { learningReminderBody, learningReminderTitle, reminderPlan } from '../core/notificationPlan';
+import { learningReminderBody, learningReminderTitle, reminderPlan, revisionReminderDates } from '../core/notificationPlan';
 import { currentUser, supabase } from './sync';
 
 const reminderKind='learning-reminder';
 const revisionKind='revision-reminder';
 const messageKind='private-message';
 const progressKind='friend-progress';
+const correctionKind='recitation-corrected';
 let activeLinkId:string|null=null;
+let recitationsVisible=false;
 let messagesEnabled=true;
 let progressEnabled=false;
+let correctionsEnabled=true;
 let registeredToken:string|null=null;
 let installationId:string|null=null;
 let scheduleQueue=Promise.resolve();
@@ -22,20 +25,26 @@ Notifications.setNotificationHandler({handleNotification:async notification=>{
   const messageId=typeof data?.messageId==='string'?data.messageId:'';
   const isChat=data?.kind===messageKind||data?.kind===progressKind;
   const sameChat=isChat&&data?.linkId===activeLinkId&&DeviceAppState.currentState==='active';
-  const duplicate=isChat&&!!messageId&&displayedMessages.has(messageId);
-  const show=!(sameChat||duplicate||data?.kind===messageKind&&!messagesEnabled||data?.kind===progressKind&&!progressEnabled);
-  if(isChat&&messageId){displayedMessages.add(messageId);if(displayedMessages.size>200)displayedMessages.clear();}
+  const correctionId=data?.kind===correctionKind&&typeof data?.recitationId==='string'?`${data.recitationId}:${data.revision??''}`:'';
+  const uniqueId=messageId||correctionId;
+  const duplicate=!!uniqueId&&displayedMessages.has(uniqueId);
+  const sameRecitations=data?.kind===correctionKind&&recitationsVisible&&DeviceAppState.currentState==='active';
+  const show=!(sameChat||sameRecitations||duplicate||data?.kind===messageKind&&!messagesEnabled||data?.kind===progressKind&&!progressEnabled||data?.kind===correctionKind&&!correctionsEnabled);
+  if(uniqueId){displayedMessages.add(uniqueId);if(displayedMessages.size>200)displayedMessages.clear();}
   return {shouldShowBanner:show,shouldShowList:show,shouldPlaySound:show,shouldSetBadge:false};
 }});
 
 export function setActiveConversation(linkId:string|null){activeLinkId=linkId;updatePushPresence(linkId).catch(()=>{});}
 export function setMessagePresentationEnabled(enabled:boolean){messagesEnabled=enabled;}
 export function setProgressPresentationEnabled(enabled:boolean){progressEnabled=enabled;}
+export function setCorrectionPresentationEnabled(enabled:boolean){correctionsEnabled=enabled;}
+export function setRecitationsVisible(visible:boolean){recitationsVisible=visible;}
 
 export async function configureNotificationChannels(){
   if(Platform.OS!=='android')return;
   await Notifications.setNotificationChannelAsync('messages',{name:'Messages privés',importance:Notifications.AndroidImportance.HIGH});
   await Notifications.setNotificationChannelAsync('learning',{name:'Rappels d’apprentissage',importance:Notifications.AndroidImportance.HIGH});
+  await Notifications.setNotificationChannelAsync('corrections',{name:'Corrections des récitations',importance:Notifications.AndroidImportance.HIGH});
 }
 
 export async function ensureNotificationPermission(prompt=false){
@@ -94,22 +103,23 @@ export async function unregisterPushDevice(){
   registeredToken=null;
 }
 
-export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;messagePreview:boolean}){
+export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;corrections:boolean;messagePreview:boolean}){
   if(!supabase)return;
   const user=await currentUser();if(!user)return;
-  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
+  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,corrections_enabled:preferences.corrections,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
   if(error)throw error;
 }
 
-export async function scheduleRevisionReminder(dueDates:string[],enabled:boolean){
-  const scheduled=await Notifications.getAllScheduledNotificationsAsync();
-  await Promise.all(scheduled.filter(item=>item.content.data?.kind===revisionKind).map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
-  if(!enabled||!dueDates.length)return;
-  const now=new Date();
-  const dates=dueDates.map(value=>new Date(`${value}T19:00:00`)).filter(date=>!Number.isNaN(date.getTime())).sort((a,b)=>a.getTime()-b.getTime());
-  const next=dates.find(date=>date>now)??new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,19);
-  if(!await ensureNotificationPermission())return;
-  await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Retrouve les versets à consolider dans Mes révisions.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date:next,channelId:'learning'}});
+export function scheduleRevisionReminder(dueDates:string[],enabled:boolean):Promise<void>{
+  const next=scheduleQueue.catch(()=>{}).then(async()=>{
+    const scheduled=await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(scheduled.filter(item=>item.content.data?.kind===revisionKind).map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
+    const dates=revisionReminderDates(dueDates,enabled);
+    if(!dates.length||!await ensureNotificationPermission())return;
+    for(const date of dates)await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Retrouve les versets à consolider dans Mes révisions.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date,channelId:'learning'}});
+  });
+  scheduleQueue=next;
+  return next;
 }
 
 export async function testLocalNotification(){
@@ -120,6 +130,7 @@ export async function testLocalNotification(){
 export function notificationDestination(data:Record<string,unknown>|undefined){
   if(data?.kind===reminderKind)return {kind:'program' as const};
   if(data?.kind===revisionKind)return {kind:'reviews' as const};
+  if(data?.kind===correctionKind&&typeof data.recitationId==='string')return {kind:'recitation' as const,recitationId:data.recitationId};
   if(data?.kind===messageKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
   if(data?.kind===progressKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
   if((data?.kind==='friend-request'||data?.kind==='friend-accepted')&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};

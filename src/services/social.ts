@@ -6,7 +6,7 @@ export type FriendLink={id:string;requester_id:string;recipient_id:string;status
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
 export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
 export type GroupMember={group_id:string;user_id:string;role:'owner'|'moderator'|'member';accepted_at:string|null;invited_by:string|null;profile?:FriendProfile};
-export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress';body:string;created_at:string;deleted_at:string|null};
+export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress'|'recitation';body:string;recitation_id:string|null;recitation?:{id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string};created_at:string;deleted_at:string|null};
 export type MessageReport={id:string;message_id:string;reason:string;reporter_id:string;excerpt:string;status:'open'|'reviewed';created_at:string};
 export type SocialSuspension={user_id:string;reason:string;suspended_until:string|null;created_at:string};
 export type SharedGoal={id:string;link_id:string;week_start:string;target_sessions:number;proposed_by:string;accepted_at:string|null};
@@ -79,7 +79,11 @@ export async function listMessages(room:{linkId?:string;groupId?:string}):Promis
   if(!messages.length)return messages;
   const hidden=checked(await client().from('friend_message_hidden').select('message_id').in('message_id',messages.map(m=>m.id))) as {message_id:string}[];
   const hiddenIds=new Set(hidden.map(h=>h.message_id));
-  return messages.filter(m=>!hiddenIds.has(m.id));
+  const visible=messages.filter(m=>!hiddenIds.has(m.id));
+  const ids=visible.filter(m=>m.kind==='recitation'&&m.recitation_id).map(m=>m.recitation_id!);
+  if(ids.length){const rows=checked(await client().from('recitations').select('id,start_verse_id,end_verse_id,duration_ms,storage_path').in('id',ids)) as NonNullable<ChatMessage['recitation']>[];
+    const byId=new Map(rows.map(row=>[row.id,row]));for(const message of visible)if(message.recitation_id)message.recitation=byId.get(message.recitation_id);}
+  return visible;
 }
 export async function hideMessageForMe(messageId:string){
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
@@ -93,6 +97,30 @@ export async function unreadMessageCount():Promise<number>{return await rpc('my_
 export async function sendMessage(room:{linkId?:string;groupId?:string},body:string,kind:'text'|'encouragement'|'progress'='text'){
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
   checked(await client().from('friend_messages').insert({link_id:room.linkId??null,group_id:room.groupId??null,sender_id:user.id,body:body.trim(),kind}));
+}
+export async function shareRecitation(linkId:string,recitationId:string,description:string){
+  const user=await currentUser();if(!user)throw new Error('Connecte-toi pour partager ta récitation.');
+  const {error}=await client().from('friend_messages').insert({link_id:linkId,group_id:null,sender_id:user.id,kind:'recitation',recitation_id:recitationId,body:description.slice(0,2000)});
+  if(error)throw error;
+}
+export async function conversationSummaries(linkIds:string[]):Promise<Record<string,{body:string;createdAt:string;unread:number}>>{
+  if(!linkIds.length)return {};
+  const [messageResponse,readResponse]=await Promise.all([
+    client().from('friend_messages').select('link_id,body,created_at,sender_id,deleted_at').in('link_id',linkIds).order('created_at',{ascending:false}).limit(300),
+    client().from('friend_message_reads').select('link_id,last_read_at').in('link_id',linkIds),
+  ]);
+  const messages=checked(messageResponse) as {link_id:string;body:string;created_at:string;sender_id:string;deleted_at:string|null}[];
+  const reads=checked(readResponse) as {link_id:string;last_read_at:string}[];
+  const user=await currentUser();const readAt=new Map(reads.map(row=>[row.link_id,row.last_read_at]));
+  const result:Record<string,{body:string;createdAt:string;unread:number}>={};
+  for(const row of messages)result[row.link_id]??={body:row.deleted_at?'Message supprimé':row.body,createdAt:row.created_at,unread:0};
+  if(user)await Promise.all(linkIds.map(async linkId=>{
+    let query=client().from('friend_messages').select('id',{count:'exact',head:true}).eq('link_id',linkId).neq('sender_id',user.id).is('deleted_at',null);
+    if(readAt.has(linkId))query=query.gt('created_at',readAt.get(linkId)!);
+    const {count,error}=await query;if(error)throw error;
+    if((count??0)>0){result[linkId]??={body:'Nouveau message',createdAt:new Date().toISOString(),unread:0};result[linkId].unread=count??0;}
+  }));
+  return result;
 }
 export async function deleteMessage(id:string){await rpc('delete_friend_message',{p_message:id});}
 export async function reportMessage(id:string,reason:string){await rpc('report_friend_message',{p_message:id,p_reason:reason});}

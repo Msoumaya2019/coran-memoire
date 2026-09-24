@@ -1,6 +1,6 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {reminderPlan,learningReminderTitle,learningReminderBody}=require('./build/core/notificationPlan.js');
+const {reminderPlan,revisionReminderDates,learningReminderTitle,learningReminderBody}=require('./build/core/notificationPlan.js');
 
 test('les rappels suivent seulement les jours choisis à 19 h, sans doublon',()=>{
   assert.deepEqual(reminderPlan([1,2,3,4,5,3],true).map(x=>[x.expoWeekday,x.hour,x.minute]),
@@ -22,4 +22,13 @@ test('19 h locales reste la cible lors des changements d’heure de Paris',()=>{
   assert.equal(format.format(new Date('2026-10-19T17:00:00Z')),'19:00');
   assert.equal(format.format(new Date('2026-10-26T18:00:00Z')),'19:00');
   assert.equal(reminderPlan([1],true)[0].hour,19);
+});
+
+test('révisions : dates uniques à 19 h, rattrapage et désactivation',()=>{
+  const now=new Date(2026,8,24,12);
+  assert.deepEqual(revisionReminderDates(['2026-09-24','2026-09-25','2026-09-25'],true,now).map(date=>date.toLocaleString('sv-SE')),
+    ['2026-09-24 19:00:00','2026-09-25 19:00:00']);
+  const late=new Date(2026,8,24,20);
+  assert.equal(revisionReminderDates(['2026-09-23'],true,late)[0].getDate(),25);
+  assert.deepEqual(revisionReminderDates(['2026-09-24'],false,now),[]);
 });

@@ -12,7 +12,7 @@ export type Goal = { label: string; ranges: Range[]; direction?: LearningDirecti
 export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
 export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
-export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
+export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
 export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'; followAudio:boolean };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };
@@ -56,10 +56,17 @@ export function reconcileState(local:AppState,remote:AppState|null):{state:AppSt
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
   return {state:{...remote,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
+export function accountState(userId:string,cached:AppState|null,remote:AppState|null):{state:AppState;shouldPush:boolean}{
+  const local=cached?.userId===userId?cached:defaultState();
+  const safeRemote=remote?.userId&&remote.userId!==userId?null:remote;
+  const result=reconcileState(local,safeRemote);
+  const owned={...result.state,userId};
+  return {state:owned,shouldPush:result.shouldPush||result.state.userId!==userId};
+}
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),profile:previous?.profile,theme:previous?.theme??'classic',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),userId:previous?.userId,profile:previous?.profile,theme:previous?.theme??'classic',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }

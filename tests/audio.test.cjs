@@ -37,16 +37,9 @@ test('le lecteur nomme séparément la sourate et le verset',()=>{
   assert.equal(verseAudioLabel(verseId(114,1)),'sourate 114, verset 1');
 });
 
-test('les nouveaux récitants utilisent un verset exact et refusent un repère absent',async()=>{
-  const originalFetch=global.fetch;
-  global.fetch=async url=>({ok:true,json:async()=>url.includes('read=30')?[{ayah:1,start_time:2500,end_time:6500}]:[]});
-  try{
-    assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciters[3]),{
-      url:'https://server7.mp3quran.net/s_gmd/114.mp3',startSeconds:2.5,endSeconds:6.5,
-    });
-    await assert.rejects(resolveAudioSegment(verseId(114,1),reciters[4]),/repère audio/);
-    assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciters[5]),{
-      url:`https://cdn.islamic.network/quran/audio/128/ar.mahermuaiqly/${verseId(114,1)}.mp3`,
-    });
-  }finally{global.fetch=originalFetch;}
+test('seuls les trois récitateurs Hafs retenus sont proposés',async()=>{
+  assert.deepEqual(reciters.map(r=>r.name),['Mahmoud Khalil Al-Husary','Mishary Rashid Alafasy','Mohammed Siddiq Al-Minshawi']);
+  for(const reciter of reciters)assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciter),{
+    url:`https://cdn.islamic.network/quran/audio/128/${reciter.id}/${verseId(114,1)}.mp3`,
+  });
 });

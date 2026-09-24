@@ -9,3 +9,14 @@ export function reminderPlan(days:number[],enabled:boolean):ReminderPlan[]{
   return [...new Set(days)].filter(day=>Number.isInteger(day)&&day>=0&&day<=6)
     .sort((a,b)=>a-b).map(day=>({day,expoWeekday:day+1,hour:19,minute:0}));
 }
+
+export function revisionReminderDates(dueDates:string[],enabled:boolean,now=new Date()):Date[]{
+  if(!enabled)return [];
+  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate(),19);
+  const overdue=dueDates.some(value=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&new Date(`${value}T19:00:00`)<=now);
+  const dates=[...new Set(dueDates)].filter(value=>/^\d{4}-\d{2}-\d{2}$/.test(value))
+    .map(value=>new Date(`${value}T19:00:00`)).filter(date=>!Number.isNaN(date.getTime())&&date>now);
+  if(overdue)dates.push(today>now?today:new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,19));
+  return [...new Map(dates.map(date=>[date.getTime(),date])).values()]
+    .sort((a,b)=>a.getTime()-b.getTime()).slice(0,32);
+}
