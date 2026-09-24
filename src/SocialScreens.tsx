@@ -7,6 +7,7 @@ import {currentUser,supabase} from './services/sync';
 import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
 import {AdminRecitations} from './AdminRecitations';
+import {AdminNotifications} from './AdminNotifications';
 import {signedAudioUrl} from './services/recitations';
 import {FriendAvatar} from './ui/FriendAvatar';
 
@@ -157,6 +158,7 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
 
 export function AdminScreen({onClose}:{onClose:()=>void}){
   const [recitationMode,setRecitationMode]=useState(false);
+  const [notificationMode,setNotificationMode]=useState(false);
   const [reports,setReports]=useState<social.MessageReport[]>([]);
   const [messages,setMessages]=useState<social.ChatMessage[]>([]);
   const [suspensions,setSuspensions]=useState<social.SocialSuspension[]>([]);
@@ -177,9 +179,11 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     await act(()=>social.suspendMember(target,reason.trim(),until));setTarget('');setReason('');
   };
   if(recitationMode)return <AdminRecitations onClose={()=>setRecitationMode(false)} />;
+  if(notificationMode)return <AdminNotifications onClose={()=>setNotificationMode(false)} />;
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
+    <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>
     <Label style={{color:colors.muted}}>Signalements et discussions entre membres. Les actions sont vérifiées par Supabase.</Label>
     {notice?<Card><Label>{notice}</Label></Card>:null}
     <Button secondary onPress={()=>load().catch(e=>setNotice(errorText(e)))}>Actualiser</Button>

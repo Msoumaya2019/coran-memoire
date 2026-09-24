@@ -12,7 +12,7 @@ export type Goal = { label: string; ranges: Range[]; direction?: LearningDirecti
 export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
 export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
-export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
+export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
 export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'; followAudio:boolean };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };

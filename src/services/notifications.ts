@@ -10,11 +10,13 @@ const revisionKind='revision-reminder';
 const messageKind='private-message';
 const progressKind='friend-progress';
 const correctionKind='recitation-corrected';
+const adminKind='admin-reminder';
 let activeLinkId:string|null=null;
 let recitationsVisible=false;
 let messagesEnabled=true;
 let progressEnabled=false;
 let correctionsEnabled=true;
+let adminMessagesEnabled=true;
 let registeredToken:string|null=null;
 let installationId:string|null=null;
 let scheduleQueue=Promise.resolve();
@@ -26,10 +28,11 @@ Notifications.setNotificationHandler({handleNotification:async notification=>{
   const isChat=data?.kind===messageKind||data?.kind===progressKind;
   const sameChat=isChat&&data?.linkId===activeLinkId&&DeviceAppState.currentState==='active';
   const correctionId=data?.kind===correctionKind&&typeof data?.recitationId==='string'?`${data.recitationId}:${data.revision??''}`:'';
-  const uniqueId=messageId||correctionId;
+  const adminId=data?.kind===adminKind&&typeof data?.notificationId==='string'?data.notificationId:'';
+  const uniqueId=messageId||correctionId||adminId;
   const duplicate=!!uniqueId&&displayedMessages.has(uniqueId);
   const sameRecitations=data?.kind===correctionKind&&recitationsVisible&&DeviceAppState.currentState==='active';
-  const show=!(sameChat||sameRecitations||duplicate||data?.kind===messageKind&&!messagesEnabled||data?.kind===progressKind&&!progressEnabled||data?.kind===correctionKind&&!correctionsEnabled);
+  const show=!(sameChat||sameRecitations||duplicate||data?.kind===messageKind&&!messagesEnabled||data?.kind===progressKind&&!progressEnabled||data?.kind===correctionKind&&!correctionsEnabled||data?.kind===adminKind&&!adminMessagesEnabled);
   if(uniqueId){displayedMessages.add(uniqueId);if(displayedMessages.size>200)displayedMessages.clear();}
   return {shouldShowBanner:show,shouldShowList:show,shouldPlaySound:show,shouldSetBadge:false};
 }});
@@ -38,6 +41,7 @@ export function setActiveConversation(linkId:string|null){activeLinkId=linkId;up
 export function setMessagePresentationEnabled(enabled:boolean){messagesEnabled=enabled;}
 export function setProgressPresentationEnabled(enabled:boolean){progressEnabled=enabled;}
 export function setCorrectionPresentationEnabled(enabled:boolean){correctionsEnabled=enabled;}
+export function setAdminMessagePresentationEnabled(enabled:boolean){adminMessagesEnabled=enabled;}
 export function setRecitationsVisible(visible:boolean){recitationsVisible=visible;}
 
 export async function configureNotificationChannels(){
@@ -45,6 +49,7 @@ export async function configureNotificationChannels(){
   await Notifications.setNotificationChannelAsync('messages',{name:'Messages privés',importance:Notifications.AndroidImportance.HIGH});
   await Notifications.setNotificationChannelAsync('learning',{name:'Rappels d’apprentissage',importance:Notifications.AndroidImportance.HIGH});
   await Notifications.setNotificationChannelAsync('corrections',{name:'Corrections des récitations',importance:Notifications.AndroidImportance.HIGH});
+  await Notifications.setNotificationChannelAsync('admin',{name:'Rappels du professeur',importance:Notifications.AndroidImportance.HIGH});
 }
 
 export async function ensureNotificationPermission(prompt=false){
@@ -103,10 +108,10 @@ export async function unregisterPushDevice(){
   registeredToken=null;
 }
 
-export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;corrections:boolean;messagePreview:boolean}){
+export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;corrections:boolean;adminMessages:boolean;messagePreview:boolean}){
   if(!supabase)return;
   const user=await currentUser();if(!user)return;
-  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,corrections_enabled:preferences.corrections,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
+  const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,corrections_enabled:preferences.corrections,admin_messages_enabled:preferences.adminMessages,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
   if(error)throw error;
 }
 
@@ -137,6 +142,7 @@ export async function scheduledReminderCounts(){
 }
 
 export function notificationDestination(data:Record<string,unknown>|undefined){
+  if(data?.kind===adminKind)return {kind:'program' as const};
   if(data?.kind===reminderKind)return {kind:'program' as const};
   if(data?.kind===revisionKind)return {kind:'reviews' as const};
   if(data?.kind===correctionKind&&typeof data.recitationId==='string')return {kind:'recitation' as const,recitationId:data.recitationId};
