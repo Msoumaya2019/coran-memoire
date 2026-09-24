@@ -112,11 +112,11 @@ export async function conversationSummaries(linkIds:string[]):Promise<Record<str
   if(!linkIds.length)return {};
   const [messageResponse,readResponse]=await Promise.all([
     client().from('friend_messages').select('link_id,body,created_at,sender_id,deleted_at').in('link_id',linkIds).order('created_at',{ascending:false}).limit(300),
-    client().from('friend_message_reads').select('link_id,last_read_at').in('link_id',linkIds),
+    client().from('friend_message_reads').select('link_id,user_id,last_read_at').in('link_id',linkIds),
   ]);
   const messages=checked(messageResponse) as {link_id:string;body:string;created_at:string;sender_id:string;deleted_at:string|null}[];
-  const reads=checked(readResponse) as {link_id:string;last_read_at:string}[];
-  const user=await currentUser();const readAt=new Map(reads.map(row=>[row.link_id,row.last_read_at]));
+  const reads=checked(readResponse) as {link_id:string;user_id:string;last_read_at:string}[];
+  const user=await currentUser();const readAt=new Map(reads.filter(row=>row.user_id===user?.id).map(row=>[row.link_id,row.last_read_at]));
   const result:Record<string,{body:string;createdAt:string;unread:number}>={};
   for(const row of messages)result[row.link_id]??={body:row.deleted_at?'Message supprimé':row.body,createdAt:row.created_at,unread:0};
   if(user)await Promise.all(linkIds.map(async linkId=>{
