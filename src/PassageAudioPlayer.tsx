@@ -45,7 +45,7 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
   const rangeRef=useRef<Range>(sessionRange),positionRef=useRef<AudioPosition|null>(null),timerRef=useRef<ReturnType<typeof setTimeout>|null>(null),collapseRef=useRef<ReturnType<typeof setTimeout>|null>(null),pendingRef=useRef<AudioPosition|null>(null),reciterRef=useRef<Reciter>(reciter);
   reciterRef.current=reciter;
   const settingsRef=useRef({count:3 as RepeatCount,mode:'passage' as RepeatMode,gap:0,autoStop:true,speed:1});
-  const finishGuard=useRef(false),isPlayingRef=useRef(false);
+  const finishGuard=useRef(false),isPlayingRef=useRef(false),completedRef=useRef(false);
   const requestRef=useRef(0),mountedRef=useRef(true),sourceRef=useRef<string|null>(null),segmentEndRef=useRef<number|null>(null),pendingSeeks=useRef<Set<Promise<void>>>(new Set());
   const count:RepeatCount=countChoice==='custom'?Number(customCount):countChoice;
   settingsRef.current={count:count==='continuous'?count:Number.isInteger(count)&&count>0?count:1,mode:repeatMode,gap,autoStop,speed};
@@ -53,7 +53,7 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
   const clearPause=()=>{if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}};
   const clearCollapse=()=>{if(collapseRef.current){clearTimeout(collapseRef.current);collapseRef.current=null;}};
   const collapseSoon=()=>{if(collapseRef.current)return;collapseRef.current=setTimeout(()=>{collapseRef.current=null;setDock('mini');},3500);};
-  const stop=()=>{requestRef.current++;clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
+  const stop=()=>{requestRef.current++;clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
   const selectionRange=():Range=>{
     if(selection==='session')return selectedRange;
     if(selection==='verse')return {start:chosenId,end:chosenId};
@@ -63,17 +63,20 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
   };
   const startAt=(position:AudioPosition)=>{
     const request=++requestRef.current;
-    clearPause();pendingRef.current=null;isPlayingRef.current=false;if(sourceRef.current)player.pause();positionRef.current=position;setCurrent(position);setPlaying(false);setLoading(true);setError('');finishGuard.current=true;
+    clearPause();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current)player.pause();positionRef.current=position;setCurrent(position);setPlaying(false);setLoading(true);setError('');finishGuard.current=true;
     resolveAudioSegment(position.verseId,reciterRef.current).then(async segment=>{
       if(!mountedRef.current||request!==requestRef.current)return;
       segmentEndRef.current=segment.endSeconds??null;
-      if(sourceRef.current!==segment.url){player.replace(segment.url);sourceRef.current=segment.url;}
+      const sameSource=sourceRef.current===segment.url;
+      if(!sameSource){player.replace(segment.url);sourceRef.current=segment.url;}
       player.setPlaybackRate(settingsRef.current.speed);
       player.setActiveForLockScreen(true,{title:`Coran · ${verseAudioLabel(position.verseId)}`,artist:reciterRef.current.name,albumTitle:'Hafs ‘an ‘Âsim'});
-      if(segment.startSeconds!==undefined){const seek=player.seekTo(segment.startSeconds);pendingSeeks.current.add(seek);try{await seek;}finally{pendingSeeks.current.delete(seek);}}
+      // A completed native player stays at the end of the file. Rewind it even
+      // when the next repetition uses exactly the same verse and URL.
+      if(sameSource||segment.startSeconds!==undefined){const seek=player.seekTo(segment.startSeconds??0);pendingSeeks.current.add(seek);try{await seek;}finally{pendingSeeks.current.delete(seek);}}
       if(!mountedRef.current||request!==requestRef.current)return;
       player.play();isPlayingRef.current=true;onVerseChangeRef.current?.(position.verseId);setPlaying(true);setLoading(false);collapseSoon();
-    }).catch(e=>{if(!mountedRef.current||request!==requestRef.current)return;isPlayingRef.current=false;setPlaying(false);setLoading(false);onVerseChangeRef.current?.(null);setError(e instanceof Error?e.message:'Lecture indisponible. Vérifie ta connexion.');});
+    }).catch(e=>{if(!mountedRef.current||request!==requestRef.current)return;isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;setPlaying(false);setLoading(false);onVerseChangeRef.current?.(null);setError(e instanceof Error?e.message:'Lecture indisponible. Vérifie ta connexion.');});
   };
   const begin=()=>{
     try{const range=selectionRange();if(countChoice==='custom'&&(!Number.isInteger(Number(customCount))||Number(customCount)<1||Number(customCount)>999))throw new Error('Choisis entre 1 et 999 écoutes.');
@@ -88,13 +91,13 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
   useEffect(()=>{
     setAudioModeAsync({playsInSilentMode:true,shouldPlayInBackground:true,interruptionMode:'doNotMix'}).catch(e=>setError(String(e)));
     const subscription=player.addListener('playbackStatusUpdate',status=>{
-      if(status.error){isPlayingRef.current=false;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
+      if(status.error){isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
       if(finishGuard.current&&status.isLoaded&&status.playing&&!status.didJustFinish)finishGuard.current=false;
       const segmentFinished=segmentEndRef.current!==null&&status.isLoaded&&status.playing&&status.currentTime>=segmentEndRef.current-0.05;
       if(!(status.didJustFinish||segmentFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
       finishGuard.current=true;
       const next=nextAudioPosition(rangeRef.current,positionRef.current,settingsRef.current.mode,settingsRef.current.count,settingsRef.current.autoStop);
-      if(!next){isPlayingRef.current=false;setPlaying(false);player.setActiveForLockScreen(false);onVerseChangeRef.current?.(null);return;}
+      if(!next){isPlayingRef.current=false;completedRef.current=true;setPlaying(false);player.setActiveForLockScreen(false);onVerseChangeRef.current?.(null);return;}
       const restart=next.verseId===rangeRef.current.start&&positionRef.current!.verseId===rangeRef.current.end;
       const repeatedVerse=settingsRef.current.mode==='each-verse'&&next.verseId===positionRef.current!.verseId&&next.repetition>positionRef.current!.repetition;
       const wait=restart||repeatedVerse?settingsRef.current.gap:0;
@@ -107,7 +110,7 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
   useEffect(()=>{if(!command||command.action==='open')return;const verse=verseAt(command.id);setChosenId(command.id);setSelectedRange({start:command.id,end:command.id});setSurahText(String(verse.surah));setFirstText(String(verse.ayah));setLastText(String(verse.ayah));setSelection(command.action==='select'?'custom':'verse');if(command.action==='listen'){setCountChoice(1);settingsRef.current={...settingsRef.current,count:1,mode:'passage',autoStop:true};rangeRef.current={start:command.id,end:command.id};startAt({verseId:command.id,repetition:1});}else if(command.action==='repeat')setRepeatMode('passage');},[command?.serial]);
   const jump=(direction:-1|1)=>{if(!current)return;const id=Math.max(rangeRef.current.start,Math.min(rangeRef.current.end,current.verseId+direction));startAt({verseId:id,repetition:current.repetition});};
   const drag=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>gesture.dy>12&&Math.abs(gesture.dy)>Math.abs(gesture.dx)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dy>40)setDock(dock==='expanded'?'mini':'hidden');}}),[dock]);
-  const playPause=()=>{if(loading)return;if(current&&!playing){if(pendingRef.current)startAt(pendingRef.current);else{clearPause();player.play();isPlayingRef.current=true;setPlaying(true);collapseSoon();}}else if(playing){clearCollapse();player.pause();isPlayingRef.current=false;setPlaying(false);}else begin();};
+  const playPause=()=>{if(loading)return;if(current&&!playing){if(pendingRef.current)startAt(pendingRef.current);else if(completedRef.current)begin();else{clearPause();player.play();isPlayingRef.current=true;setPlaying(true);collapseSoon();}}else if(playing){clearCollapse();player.pause();isPlayingRef.current=false;setPlaying(false);}else begin();};
   const chooseRange=(range:Range)=>{setSelectedRange(range);setChosenId(range.start);setSurahText(String(verseAt(range.start).surah));setFirstText(String(verseAt(range.start).ayah));setLastText(String(verseAt(range.end).surah===verseAt(range.start).surah?verseAt(range.end).ayah:verseAt(range.start).ayah));setSelection(verseAt(range.start).surah===verseAt(range.end).surah?'custom':'session');};
   const selectedSurah=surahs[Number(surahText)-1];
   const stepper=(title:string,value:string,set:(v:string)=>void)=><View style={{flex:1}}><Label style={{fontSize:12,color:colors.muted}}>{title}</Label><View style={{flexDirection:'row',alignItems:'center',gap:3}}><Pressable onPress={()=>set(String(Math.max(1,Number(value)-1)))} style={{padding:8,backgroundColor:colors.soft,borderRadius:8}}><Label>−</Label></Pressable><View style={{flex:1}}><Field value={value} onChangeText={set} placeholder="1" keyboardType="number-pad" /></View><Pressable onPress={()=>set(String(Math.min(selectedSurah?.count??1,Number(value)+1)))} style={{padding:8,backgroundColor:colors.soft,borderRadius:8}}><Label>+</Label></Pressable></View></View>;

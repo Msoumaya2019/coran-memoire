@@ -16,7 +16,7 @@ export const themeOptions=[
   {key:'lilac',name:'Lilas & Perle',description:'Délicat et raffiné',swatches:['#5F548E','#D9CDEA','#F8F3FC','#B89D65']},
   {key:'night',name:'Bleu Nuit & Or',description:'Sobre et élégant',swatches:['#132B47','#5C7390','#F4F1EA','#B58942']},
 ] as const;
-export function Label({children,style}:{children:React.ReactNode;style?:any}){return <Text style={[{color:colors.text,fontSize:16},style]}>{children}</Text>}
+export function Label({children,style,numberOfLines}:{children:React.ReactNode;style?:any;numberOfLines?:number}){return <Text numberOfLines={numberOfLines} style={[{color:colors.text,fontSize:16},style]}>{children}</Text>}
 export function Title({children}:{children:React.ReactNode}){return <Text style={{fontSize:30,fontWeight:'700',color:colors.green,letterSpacing:-0.5}}>{children}</Text>}
 export function Card({children,style}:{children:React.ReactNode;style?:ViewStyle}){return <View style={[{backgroundColor:colors.paper,borderRadius:22,padding:18,borderWidth:1,borderColor:colors.line,marginBottom:14},style]}>{children}</View>}
 export function Button({children,onPress,secondary=false,disabled=false,small=false}:{children:React.ReactNode;onPress:()=>void;secondary?:boolean;disabled?:boolean;small?:boolean}){return <Pressable onPress={onPress} disabled={disabled} style={[{backgroundColor:secondary?colors.soft:colors.green,borderRadius:15,paddingVertical:small?10:15,paddingHorizontal:small?14:18,alignItems:'center',justifyContent:'center',marginVertical:5,borderWidth:secondary?1:0,borderColor:colors.softBorder},disabled&&{opacity:0.45}]}><Text style={{color:secondary?colors.green:'#FFFFFF',fontSize:small?13:15,fontWeight:'700',textAlign:'center'}}>{children}</Text></Pressable>}

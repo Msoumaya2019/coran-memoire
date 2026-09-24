@@ -8,6 +8,7 @@ import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
 import {AdminRecitations} from './AdminRecitations';
 import {signedAudioUrl} from './services/recitations';
+import {FriendAvatar} from './ui/FriendAvatar';
 
 const errorText=(e:unknown)=>e instanceof Error?e.message:String(e);
 const heading=(title:string)=><Label style={{fontSize:18,fontWeight:'700',color:colors.green,marginTop:18,marginBottom:8}}>{title}</Label>;
@@ -32,6 +33,13 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   const [summaries,setSummaries]=useState<Record<string,{body:string;createdAt:string;unread:number}>>({});
   const [friendStatuses,setFriendStatuses]=useState<Record<string,boolean>>({});
   const [audioMessageId,setAudioMessageId]=useState<string|null>(null);
+  const [hasOlder,setHasOlder]=useState(false),[loadingOlder,setLoadingOlder]=useState(false);
+  const [otherReadAt,setOtherReadAt]=useState<string|null>(null),[otherTyping,setOtherTyping]=useState(false);
+  const [showFriendTools,setShowFriendTools]=useState(false);
+  const typingChannel=useRef<ReturnType<NonNullable<typeof supabase>['channel']>|null>(null);
+  const typingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const outgoingTypingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const newestMessage=useRef<string|null>(null),olderExhausted=useRef(false);
   const audioPlayer=useRef<ReturnType<typeof createAudioPlayer>|null>(null);
   useEffect(()=>()=>audioPlayer.current?.release(),[]);
   const backSwipe=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(selected){setSelected(null);setOverview(null);}else onClose();}}),[selected,onClose]);
@@ -47,27 +55,34 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   };
   const loadRoom=async()=>{
     if(!selected)return;
-    setMessages(await social.listMessages(selected.kind==='link'?{linkId:selected.id}:{groupId:selected.id}));
-    if(selected.kind==='link')await social.markConversationRead(selected.id);
+    const latest=await social.listMessages(selected.kind==='link'?{linkId:selected.id}:{groupId:selected.id});
+    setMessages(previous=>{const byId=new Map(previous.map(message=>[message.id,message]));for(const message of latest)byId.set(message.id,message);return [...byId.values()].sort((a,b)=>a.created_at.localeCompare(b.created_at));});
+    if(!olderExhausted.current&&latest.length===50)setHasOlder(true);
+    const newest=latest[latest.length-1]?.id??null;
+    if(newest&&newest!==newestMessage.current){newestMessage.current=newest;setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),120);}
+    if(selected.kind==='link'){await social.markConversationRead(selected.id);typingChannel.current?.send({type:'broadcast',event:'read',payload:{userId:myId,at:new Date().toISOString()}}).catch(()=>{});}
     if(selected.kind==='group')setMembers(await social.listGroupMembers(selected.id));
     else{const [goals,dates]=await Promise.all([social.listSharedGoals(selected.id),social.listAppointments(selected.id)]);setSharedGoals(goals);setAppointments(dates);
-      const link=links.find(l=>l.id===selected.id);if(link) setOverview(await social.friendOverview(link.requester_id===myId?link.recipient_id:link.requester_id));}
+      const link=links.find(l=>l.id===selected.id);if(link){const other=link.requester_id===myId?link.recipient_id:link.requester_id;setOverview(await social.friendOverview(other));setOtherReadAt(await social.otherReadAt(selected.id,other));}}
   };
+  const loadOlder=async()=>{if(!selected||!messages.length||loadingOlder)return;setLoadingOlder(true);try{const older=await social.listMessages(selected.kind==='link'?{linkId:selected.id}:{groupId:selected.id},messages[0].created_at);olderExhausted.current=older.length<50;setHasOlder(!olderExhausted.current);setMessages(previous=>{const byId=new Map([...older,...previous].map(message=>[message.id,message]));return [...byId.values()].sort((a,b)=>a.created_at.localeCompare(b.created_at));});}catch(e){setNotice(errorText(e));}finally{setLoadingOlder(false);}};
   const act=async(fn:()=>Promise<unknown>,message='Enregistré.')=>{
     setBusy(true);try{await fn();setNotice(message);await load();if(selected)await loadRoom();}
     catch(e){setNotice(errorText(e));}finally{setBusy(false);}
   };
   useEffect(()=>{if(!selected)load().catch(e=>setNotice(errorText(e)));},[selected?.id]);
+  useEffect(()=>{const client=supabase;if(selected||!client)return;const channel=client.channel('friend-inbox').on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages'},()=>load().catch(()=>{})).subscribe();const timer=setInterval(()=>load().catch(()=>{}),15000);return()=>{clearInterval(timer);client.removeChannel(channel);};},[selected?.id]);
   useEffect(()=>{if(initialCode)setCode(initialCode);},[initialCode]);
   useEffect(()=>{if(!initialLinkId)return;const link=links.find(item=>item.id===initialLinkId&&item.status==='accepted');if(link&&selected?.id!==link.id)setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});},[initialLinkId,links]);
   useEffect(()=>{const linkId=selected?.kind==='link'?selected.id:null;setActiveConversation(linkId);
     const timer=linkId?setInterval(()=>updatePushPresence(linkId).catch(()=>{}),20000):null;
     return()=>{if(timer)clearInterval(timer);setActiveConversation(null);};
   },[selected?.id,selected?.kind]);
-  useEffect(()=>{if(!selected)return;loadRoom().catch(e=>setNotice(errorText(e)));
+  useEffect(()=>{if(!selected)return;setMessages([]);setHasOlder(false);setOtherReadAt(null);setShowFriendTools(false);newestMessage.current=null;olderExhausted.current=false;loadRoom().catch(e=>setNotice(errorText(e)));
     const filter=selected.kind==='link'?`link_id=eq.${selected.id}`:`group_id=eq.${selected.id}`;
-    const channel=supabase?.channel(`friend-room-${selected.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages',filter},()=>loadRoom().catch(()=>{})).subscribe();
-    const timer=setInterval(()=>loadRoom().catch(()=>{}),30000);return()=>{clearInterval(timer);if(channel)supabase?.removeChannel(channel);};
+    const channel=supabase?.channel(`friend-room-${selected.id}`,{config:{private:true}}).on('postgres_changes',{event:'INSERT',schema:'public',table:'friend_messages',filter},()=>loadRoom().catch(()=>{})).on('broadcast',{event:'typing'},({payload})=>{if(payload.userId!==myId){setOtherTyping(!!payload.active);if(typingTimer.current)clearTimeout(typingTimer.current);typingTimer.current=setTimeout(()=>setOtherTyping(false),3000);}}).on('broadcast',{event:'read'},({payload})=>{if(payload.userId!==myId&&typeof payload.at==='string')setOtherReadAt(payload.at);}).subscribe();
+    typingChannel.current=channel??null;
+    const timer=setInterval(()=>loadRoom().catch(()=>{}),15000);return()=>{clearInterval(timer);if(typingTimer.current)clearTimeout(typingTimer.current);if(outgoingTypingTimer.current)clearTimeout(outgoingTypingTimer.current);typingChannel.current=null;if(channel)supabase?.removeChannel(channel);};
   },[selected?.id,selected?.kind]);
   const openLink=async(link:social.FriendLink)=>{
     setSelected({id:link.id,kind:'link',name:link.other?.display_name??'Ami'});
@@ -75,17 +90,17 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   };
   const otherId=(link:social.FriendLink)=>link.requester_id===myId?link.recipient_id:link.requester_id;
   const sender=(id:string)=>id===myId?'Moi':members.find(m=>m.user_id===id)?.profile?.display_name??links.find(l=>otherId(l)===id)?.other?.display_name??'Membre';
-  const send=()=>act(async()=>{await social.sendMessage(room,draft);setDraft('');},'Message envoyé.');
+  const send=()=>act(async()=>{await social.sendMessage(room,draft);setDraft('');typingChannel.current?.send({type:'broadcast',event:'typing',payload:{userId:myId,active:false}}).catch(()=>{});},'');
   const playSharedRecitation=async(message:social.ChatMessage)=>{if(!message.recitation){setNotice('Cet enregistrement n’est plus disponible.');return;}try{if(audioMessageId===message.id&&audioPlayer.current){audioPlayer.current.pause();setAudioMessageId(null);return;}audioPlayer.current?.release();const uri=await signedAudioUrl(message.recitation.storage_path);audioPlayer.current=createAudioPlayer({uri});audioPlayer.current.play();setAudioMessageId(message.id);}catch(error){setNotice(errorText(error));}};
   return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined} {...backSwipe.panHandlers}>
     <ScrollView ref={scrollRef} style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:45}}>
     {selected&&<Button secondary onPress={()=>{audioPlayer.current?.pause();setAudioMessageId(null);setSelected(null);setOverview(null);}}>← Mes amis</Button>}
-    <Title>{selected?selected.name:'Mes amis'}</Title>
+    {selected?.kind==='link'?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:10}}><FriendAvatar name={selected.name} path={links.find(link=>link.id===selected.id)?.other?.avatar_path} /><View><Title>{selected.name}</Title><Label style={{fontSize:12,color:colors.muted}}>{otherTyping?'Écrit un message…':overview?.is_online?'En ligne':'Hors ligne'}</Label></View></View>:<Title>{selected?selected.name:'Mes amis'}</Title>}
     {notice?<Card><Label>{notice}</Label></Card>:null}
     {!selected?<>
       {!profile?<Card><Label>Connecte-toi à ton compte pour utiliser les amis.</Label></Card>:<>
         {heading('Mes amis')}
-        {links.filter(l=>l.status==='accepted').map(l=><Card key={l.id} style={{padding:9}}><Pressable onPress={()=>openLink(l).catch(e=>setNotice(errorText(e)))} style={{flexDirection:'row',alignItems:'center',gap:11,padding:5}}><View style={{width:44,height:44,borderRadius:22,alignItems:'center',justifyContent:'center',backgroundColor:colors.soft}}><Label style={{fontSize:20,fontWeight:'700',color:colors.green}}>{(l.other?.display_name??'A').slice(0,1).toUpperCase()}</Label></View><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{l.other?.display_name??'Ami'} {friendStatuses[otherId(l)]?'· En ligne':''}</Label><Label style={{fontSize:12,color:colors.muted}}>{summaries[l.id]?.body??'Commencer une discussion'}</Label></View><View style={{alignItems:'flex-end'}}><Label style={{fontSize:11,color:colors.muted}}>{summaries[l.id]?new Date(summaries[l.id].createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</Label>{!!summaries[l.id]?.unread&&<View style={{backgroundColor:colors.green,borderRadius:12,minWidth:20,paddingHorizontal:5,alignItems:'center'}}><Label style={{fontSize:11,color:'white'}}>{summaries[l.id].unread}</Label></View>}</View></Pressable><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.removeFriend(l.id))}>Retirer</Button></View><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.blockFriend(otherId(l)))}>Bloquer</Button></View></View></Card>)}
+        {links.filter(l=>l.status==='accepted').map(l=><Card key={l.id} style={{padding:9}}><Pressable onPress={()=>openLink(l).catch(e=>setNotice(errorText(e)))} style={{flexDirection:'row',alignItems:'center',gap:11,padding:5}}><FriendAvatar name={l.other?.display_name??'Ami'} path={l.other?.avatar_path} size={44} /><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{l.other?.display_name??'Ami'} {friendStatuses[otherId(l)]?'· En ligne':''}</Label><Label numberOfLines={1} style={{fontSize:12,color:colors.muted}}>{summaries[l.id]?.body??'Commencer une discussion'}</Label></View><View style={{alignItems:'flex-end'}}><Label style={{fontSize:11,color:colors.muted}}>{summaries[l.id]?new Date(summaries[l.id].createdAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''}</Label>{!!summaries[l.id]?.unread&&<View style={{backgroundColor:colors.green,borderRadius:12,minWidth:20,paddingHorizontal:5,alignItems:'center'}}><Label style={{fontSize:11,color:'white'}}>{summaries[l.id].unread}</Label></View>}</View></Pressable><View style={{flexDirection:'row',gap:8}}><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.removeFriend(l.id))}>Retirer</Button></View><View style={{flex:1}}><Button small secondary onPress={()=>act(()=>social.blockFriend(otherId(l)))}>Bloquer</Button></View></View></Card>)}
         <Card><Label style={{fontWeight:'700'}}>Mon code d’invitation</Label><Label style={{fontSize:23,color:colors.green,marginVertical:8}}>{profile.invite_code}</Label><Label style={{fontSize:12,color:colors.muted}}>Partage ce code uniquement avec la personne que tu souhaites inviter.</Label><Button small secondary onPress={()=>Share.share({message:`Rejoins-moi sur Apprendre le Coran : coranmemoire://friend/${profile.invite_code}`}).catch(e=>setNotice(errorText(e)))}>Partager mon lien d’invitation</Button></Card>
         {heading('Inviter un ami')}
         <Field value={code} onChangeText={setCode} placeholder="Code d’invitation" />
@@ -100,6 +115,8 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
         {groups.map(g=><Card key={g.id}><Label style={{fontWeight:'700'}}>{g.name}</Label><Button small onPress={()=>{setSelected({id:g.id,kind:'group',name:g.name});setOverview(null);}}>Ouvrir</Button></Card>)}
       </>}
     </>:<>
+      <Button small secondary onPress={()=>setShowFriendTools(!showFriendTools)}>{showFriendTools?'Masquer les options':'Profil et entraide'}</Button>
+      {showFriendTools&&<>
       {overview&&<Card><Label style={{fontWeight:'700'}}>{overview.display_name} · {overview.is_online?'En ligne':'Hors ligne'}</Label>{overview.goal_label?<><Label>{overview.goal_label} · objectif atteint : {overview.goal_percent} %</Label><Label>Cette semaine : {overview.weekly_verses} versets · {overview.weekly_sessions} séances</Label></>:<Label style={{color:colors.muted}}>Progression privée</Label>}{overview.current_start&&overview.current_end?<Label>Passage actuel : {reference({start:overview.current_start,end:overview.current_end})}</Label>:null}</Card>}
       {selected.kind==='link'&&<>
         {heading('Objectif partagé')}
@@ -122,16 +139,17 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
         {appointments.map(a=><Card key={a.id}><Label>{new Date(a.starts_at).toLocaleString('fr-FR')}</Label><Label style={{fontSize:12,color:colors.muted}}>{a.accepted_at?'Confirmé':'En attente'}</Label>{!a.accepted_at&&a.proposed_by!==myId?<Button small onPress={()=>act(()=>social.acceptAppointment(a.id))}>Accepter</Button>:null}<Button small secondary onPress={()=>act(()=>social.cancelAppointment(a.id))}>Annuler</Button></Card>)}
       </>}
       {selected.kind==='group'&&<><Card><Label style={{fontWeight:'700'}}>Membres ({members.filter(m=>m.accepted_at).length}/5)</Label>{members.map(m=><View key={m.user_id}><Label>{m.profile?.display_name??'Membre'} · {m.role}{!m.accepted_at?' · invitation en attente':''}</Label>{!m.accepted_at&&m.user_id===myId?<Button small onPress={()=>act(()=>social.acceptGroupInvite(selected.id))}>Rejoindre</Button>:null}{!m.accepted_at&&m.user_id===myId?<Button small secondary onPress={()=>act(()=>social.declineGroupInvite(selected.id))}>Refuser</Button>:null}{m.user_id!==myId&&m.accepted_at&&members.some(x=>x.user_id===myId&&x.role==='owner')?<Button small secondary onPress={()=>act(()=>social.setGroupModerator(selected.id,m.user_id,m.role!=='moderator'))}>{m.role==='moderator'?'Retirer la modération':'Nommer modérateur'}</Button>:null}{m.user_id!==myId&&m.role!=='owner'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role))?<Button small secondary onPress={()=>act(()=>social.removeGroupMember(selected.id,m.user_id))}>Retirer du cercle</Button>:null}</View>)}</Card>{members.some(m=>m.user_id===myId&&['owner','moderator'].includes(m.role))&&links.filter(l=>l.status==='accepted').map(l=><Button key={l.id} small secondary onPress={()=>act(()=>social.inviteGroupMember(selected.id,otherId(l)))}>Inviter {l.other?.display_name??'un ami'}</Button>)}{members.some(m=>m.user_id===myId&&m.role==='owner')?<Button secondary onPress={()=>Alert.alert('Supprimer le cercle ?','Les messages de ce cercle seront supprimés définitivement.',[{text:'Annuler',style:'cancel'},{text:'Supprimer',style:'destructive',onPress:()=>act(async()=>{await social.deleteGroup(selected.id);setSelected(null);})}])}>Supprimer le cercle</Button>:null}</>}
+      </>}
       {heading('Discussion libre')}
+      {hasOlder&&<Button small secondary disabled={loadingOlder} onPress={loadOlder}>{loadingOlder?'Chargement…':'Charger les messages précédents'}</Button>}
       {suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())?<Card><Label>Messagerie suspendue : {suspension.reason}</Label></Card>:null}
-      {messages.map(m=><Card key={m.id} style={{marginLeft:m.sender_id===myId?30:0,marginRight:m.sender_id===myId?0:30,backgroundColor:m.sender_id===myId?colors.soft:colors.paper}}><Label style={{fontSize:12,color:colors.muted}}>{sender(m.sender_id)} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label style={{marginVertical:7}}>{m.body}</Label>{m.kind==='recitation'&&<View style={{padding:8,borderRadius:12,backgroundColor:colors.soft}}><Label style={{fontWeight:'700'}}>{m.recitation?reference({start:m.recitation.start_verse_id,end:m.recitation.end_verse_id}):'Enregistrement indisponible'}</Label>{m.recitation&&<Label style={{fontSize:12,color:colors.muted}}>Durée : {Math.floor(m.recitation.duration_ms/60000)}:{String(Math.floor(m.recitation.duration_ms/1000%60)).padStart(2,'0')}</Label>}<Button small disabled={!m.recitation} onPress={()=>playSharedRecitation(m)}>{audioMessageId===m.id?'Pause':'▶ Écouter la récitation'}</Button></View>}<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}><Button small secondary onPress={()=>act(()=>social.hideMessageForMe(m.id))}>Masquer pour moi</Button>{!m.deleted_at&&(m.sender_id===myId||selected.kind==='group'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role)))?<Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button>:null}{!m.deleted_at&&m.sender_id!==myId?<Button small secondary onPress={()=>setReportTarget(m.id)}>Signaler</Button>:null}</View></Card>)}
+      {messages.map(m=><Card key={m.id} style={{marginLeft:m.sender_id===myId?48:0,marginRight:m.sender_id===myId?0:48,backgroundColor:m.sender_id===myId?colors.soft:colors.paper,borderRadius:18,padding:12}}><Label style={{fontSize:11,color:colors.muted}}>{sender(m.sender_id)} · {new Date(m.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</Label><Label style={{marginVertical:7}}>{m.body}</Label>{m.kind==='recitation'&&<View style={{padding:8,borderRadius:12,backgroundColor:colors.paper}}><Label style={{fontWeight:'700'}}>{m.recitation?reference({start:m.recitation.start_verse_id,end:m.recitation.end_verse_id}):'Enregistrement indisponible'}</Label>{m.recitation&&<Label style={{fontSize:12,color:colors.muted}}>Durée : {Math.floor(m.recitation.duration_ms/60000)}:{String(Math.floor(m.recitation.duration_ms/1000%60)).padStart(2,'0')}</Label>}<Button small disabled={!m.recitation} onPress={()=>playSharedRecitation(m)}>{audioMessageId===m.id?'Pause':'▶ Écouter la récitation'}</Button></View>}{m.sender_id===myId&&selected.kind==='link'&&<Label style={{fontSize:10,color:colors.muted,textAlign:'right'}}>{otherReadAt&&m.created_at<=otherReadAt?'Lu':'Envoyé'}</Label>}<View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}><Button small secondary onPress={()=>act(()=>social.hideMessageForMe(m.id))}>Masquer pour moi</Button>{!m.deleted_at&&(m.sender_id===myId||selected.kind==='group'&&members.some(x=>x.user_id===myId&&['owner','moderator'].includes(x.role)))?<Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button>:null}{!m.deleted_at&&m.sender_id!==myId?<Button small secondary onPress={()=>setReportTarget(m.id)}>Signaler</Button>:null}</View></Card>)}
       {reportTarget?<Card><Label>Signaler ce message à la modération</Label><Field value={reason} onChangeText={setReason} placeholder="Motif du signalement" /><Button small disabled={reason.trim().length<3} onPress={()=>act(async()=>{await social.reportMessage(reportTarget,reason);setReportTarget('');setReason('');},'Signalement envoyé.')}>Envoyer</Button><Button small secondary onPress={()=>setReportTarget('')}>Annuler</Button></Card>:null}
     </>}
     </ScrollView>
     {selected?<View style={{paddingHorizontal:18,paddingVertical:8,backgroundColor:colors.cream,borderTopWidth:1,borderColor:colors.line}}>
-      <TextInput style={{minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={setDraft} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
+      <TextInput style={{minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={value=>{setDraft(value);if(outgoingTypingTimer.current)clearTimeout(outgoingTypingTimer.current);outgoingTypingTimer.current=setTimeout(()=>typingChannel.current?.send({type:'broadcast',event:'typing',payload:{userId:myId,active:!!value.trim()}}).catch(()=>{}),400);}} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
       <Button disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
-      <Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,'Bravo pour ta régularité !','encouragement'),'Encouragement envoyé.')}>Envoyer un encouragement</Button>
       {selected.kind==='link'?<Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,shareText,'progress'),'Étape partagée avec cet ami.')}>Partager volontairement mon étape</Button>:null}
     </View>:null}
   </KeyboardAvoidingView>;

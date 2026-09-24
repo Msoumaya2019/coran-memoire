@@ -1,7 +1,7 @@
 import { AppState, progress, stats, todayLocal } from '../core/program';
 import { currentUser, supabase } from './sync';
 
-export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean};
+export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean;avatar_path?:string|null};
 export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:FriendProfile};
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
 export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
@@ -72,8 +72,9 @@ export async function setGroupModerator(groupId:string,memberId:string,enabled:b
 export async function removeGroupMember(groupId:string,memberId:string){await rpc('remove_group_member',{p_group:groupId,p_member:memberId});}
 export async function deleteGroup(groupId:string){await rpc('delete_friend_group',{p_group:groupId});}
 
-export async function listMessages(room:{linkId?:string;groupId?:string}):Promise<ChatMessage[]>{
-  let query=client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100);
+export async function listMessages(room:{linkId?:string;groupId?:string},before?:string):Promise<ChatMessage[]>{
+  let query=client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(50);
+  if(before)query=query.lt('created_at',before);
   query=room.linkId?query.eq('link_id',room.linkId):query.eq('group_id',room.groupId!);
   const messages=(checked(await query) as ChatMessage[]).reverse();
   if(!messages.length)return messages;
@@ -92,6 +93,10 @@ export async function hideMessageForMe(messageId:string){
 export async function markConversationRead(linkId:string){
   const user=await currentUser();if(!user)return;
   checked(await client().from('friend_message_reads').upsert({link_id:linkId,user_id:user.id,last_read_at:new Date().toISOString()}));
+}
+export async function otherReadAt(linkId:string,otherId:string):Promise<string|null>{
+  const row=checked(await client().from('friend_message_reads').select('last_read_at').eq('link_id',linkId).eq('user_id',otherId).maybeSingle()) as {last_read_at:string}|null;
+  return row?.last_read_at??null;
 }
 export async function unreadMessageCount():Promise<number>{return await rpc('my_unread_messages') as number;}
 export async function sendMessage(room:{linkId?:string;groupId?:string},body:string,kind:'text'|'encouragement'|'progress'='text'){
