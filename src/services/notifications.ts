@@ -127,6 +127,15 @@ export async function testLocalNotification(){
   await Notifications.scheduleNotificationAsync({content:{title:learningReminderTitle,body:learningReminderBody,data:{kind:reminderKind,test:true},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,seconds:5,channelId:'learning'}});
 }
 
+export async function scheduledReminderCounts(){
+  await scheduleQueue.catch(()=>{});
+  const scheduled=await Notifications.getAllScheduledNotificationsAsync();
+  return {
+    learning:scheduled.filter(item=>item.content.data?.kind===reminderKind).length,
+    revision:scheduled.filter(item=>item.content.data?.kind===revisionKind).length,
+  };
+}
+
 export function notificationDestination(data:Record<string,unknown>|undefined){
   if(data?.kind===reminderKind)return {kind:'program' as const};
   if(data?.kind===revisionKind)return {kind:'reviews' as const};
