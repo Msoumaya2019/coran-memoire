@@ -109,7 +109,7 @@ export async function scheduleRevisionReminder(dueDates:string[],enabled:boolean
   const dates=dueDates.map(value=>new Date(`${value}T19:00:00`)).filter(date=>!Number.isNaN(date.getTime())).sort((a,b)=>a.getTime()-b.getTime());
   const next=dates.find(date=>date>now)??new Date(now.getFullYear(),now.getMonth(),now.getDate()+1,19);
   if(!await ensureNotificationPermission())return;
-  await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Prends quelques minutes pour consolider ce que tu as mémorisé.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date:next,channelId:'learning'}});
+  await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Retrouve les versets à consolider dans Mes révisions.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date:next,channelId:'learning'}});
 }
 
 export async function testLocalNotification(){
@@ -119,7 +119,7 @@ export async function testLocalNotification(){
 
 export function notificationDestination(data:Record<string,unknown>|undefined){
   if(data?.kind===reminderKind)return {kind:'program' as const};
-  if(data?.kind===revisionKind)return {kind:'program' as const};
+  if(data?.kind===revisionKind)return {kind:'reviews' as const};
   if(data?.kind===messageKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
   if(data?.kind===progressKind&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};
   if((data?.kind==='friend-request'||data?.kind==='friend-accepted')&&typeof data.linkId==='string')return {kind:'conversation' as const,linkId:data.linkId};

@@ -15,7 +15,12 @@ export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
 export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'; followAudio:boolean };
-export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; lastRead?:{page:number;verseId:number;readAt:string} };
+export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };
+export type ReviewGrade = 'perfect'|'hesitant'|'rework';
+export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
+export type DifficultyMarker = { user?:{createdAt:string}; admin?:{createdAt:string;comment?:string} };
+export type DifficultyEvent = {verseId:number;date:string;origin:'user'|'admin';action:'marked'|'resolved';comment?:string};
+export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[] };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -41,19 +46,20 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],theme:'classic',notifications:{messages:true,learning:true},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'classic',notifications:{messages:true,learning:true},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:local,shouldPush:true};
   const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader??local.reader,lastRead=remote.lastRead??local.lastRead;
-  if(profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead)return {state:remote,shouldPush:false};
+  const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
+  if(profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
-  return {state:{...remote,profile,theme,notifications,reader,lastRead,updatedAt},shouldPush:true};
+  return {state:{...remote,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),profile:previous?.profile,theme:previous?.theme??'classic',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),profile:previous?.profile,theme:previous?.theme??'classic',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
@@ -62,9 +68,12 @@ export function dayOf(key: string): number { return new Date(`${key}T12:00:00`).
 export function touch(state: AppState): AppState {return {...state,updatedAt:new Date().toISOString()};}
 
 export function markKnowledge(state: AppState, range: Range, mastery: Mastery): AppState {
-  const knowledge={...state.knowledge};
-  for(let id=range.start;id<=range.end;id++) knowledge[id]=mastery;
-  return touch({...state,knowledge});
+  const knowledge={...state.knowledge},memorizedAt={...state.memorizedAt},reviewDue={...state.reviewDue};
+  for(let id=range.start;id<=range.end;id++){
+    knowledge[id]=mastery;
+    if(mastery==='learning'){delete memorizedAt[id];delete reviewDue[id];}
+  }
+  return touch({...state,knowledge,memorizedAt,reviewDue});
 }
 export function isRangeKnown(state:AppState,range:Range):boolean {
   for(let id=range.start;id<=range.end;id++)if(state.knowledge[id]!=='perfect'&&state.knowledge[id]!=='review')return false;
@@ -177,7 +186,9 @@ export function completeSession(state: AppState,id:string,memorized:boolean,from
   const session=state.sessions.find(s=>s.id===id);
   if(!session)return state;
   if(!memorized)return postponeSession(state,id,from);
-  const updated=markKnowledge(state,session,'perfect');
+  const memorizedAt={...state.memorizedAt};
+  for(let verse=session.start;verse<=session.end;verse++)if(state.knowledge[verse]!=='perfect'&&state.knowledge[verse]!=='review'&&!memorizedAt[verse])memorizedAt[verse]=from;
+  const updated=markKnowledge({...state,memorizedAt},session,'perfect');
   const revisions=updated.revisions.filter(r=>r.end<session.start||r.start>session.end);
   revisions.push({id:`r-${session.start}-${session.end}`,start:session.start,end:session.end,due:addDays(from,1),interval:1,streak:0,completedCount:0});
   const sessions=updated.sessions.map(s=>s.id===id?{...s,status:'done' as SessionStatus,completedAt:new Date().toISOString(),completedDate:from}:s);
