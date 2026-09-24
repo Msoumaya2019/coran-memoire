@@ -1,4 +1,4 @@
-# Mon Coran Mémoire
+# Apprendre le Coran
 
 Application Expo, React Native et TypeScript pour mémoriser le Coran en Hafs ‘an ‘Âsim. L’interface est en français. Le texte et les 604 pages du mushaf sont disponibles hors ligne.
 

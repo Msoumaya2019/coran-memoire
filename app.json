@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "Mon Coran Mémoire",
+    "name": "Apprendre le Coran",
     "slug": "coran-memoire",
     "owner": "scichiker",
     "scheme": "coranmemoire",
-    "version": "0.9.1",
+    "version": "0.9.2",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.coranmemoire.app", "buildNumber": "13"},
-    "android": {"package": "fr.coranmemoire.app", "versionCode": 13, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
+    "ios": {"supportsTablet": true, "bundleIdentifier": "fr.coranmemoire.app", "buildNumber": "14"},
+    "android": {"package": "fr.coranmemoire.app", "versionCode": 14, "softwareKeyboardLayoutMode": "resize", "permissions": ["SCHEDULE_EXACT_ALARM"]},
     "extra": {"eas": {"projectId": "07400d61-2179-418c-b872-527c0387c477"}},
-    "plugins": ["expo-sqlite", ["expo-notifications", {"defaultChannel": "messages", "color": "#B39559"}], ["expo-audio", {"recordAudioAndroid": true, "microphonePermission": "Autoriser Mon Coran Mémoire à enregistrer votre récitation pour le suivi de votre apprentissage.", "enableBackgroundPlayback": true}]]
+    "plugins": ["expo-sqlite", ["expo-notifications", {"defaultChannel": "messages", "color": "#B39559"}], ["expo-audio", {"recordAudioAndroid": true, "microphonePermission": "Autoriser Apprendre le Coran à enregistrer votre récitation pour le suivi de votre apprentissage.", "enableBackgroundPlayback": true}]]
   }
 }
