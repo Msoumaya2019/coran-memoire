@@ -1,22 +1,26 @@
-# Moushaf Tajweed : état des sources
+# Moushaf Tajweed : sources, droits et limites techniques
 
-Le mode `tajweed` conservé dans les préférences est maintenant appelé **Lecture simplifiée**. Il utilise les versets Hafs et les annotations Tajweed par verset déjà intégrés. Le mode de pages couleur `tajweedPages` possède un identifiant séparé pour éviter toute migration destructive des préférences, mais il n'est pas activé tant que les ressources requises ne sont pas vérifiées.
+Le mode `tajweed` conservé dans les préférences est maintenant appelé **Lecture simplifiée**. Le nouveau mode `tajweedPages` affiche **604 pages complètes distinctes** en couleur, dans leur mise en page traditionnelle. Les images proviennent du répertoire [`easyquran.com/hafs-tajweed`](https://github.com/QuranHub/quran-pages-images/tree/main/easyquran.com/hafs-tajweed) de QuranHub, attribué à Dar Al Maarifah / EasyQuran. Le propriétaire du projet a déclaré le 24 septembre 2026 disposer d'une **autorisation écrite** pour intégrer et redistribuer ces pages dans l'application et le dépôt public. Cette autorisation n'a pas été transmise au dépôt ; elle doit être conservée par le propriétaire.
 
-## Sources examinées
+Le dépôt QuranHub annonce GPLv3 dans son README alors que son fichier LICENSE contient l'Unlicense. Cette ambiguïté ne constitue pas notre autorisation ; celle déclarée par le propriétaire du projet pour l'édition originale est déterminante. Le code de téléchargement et ses empreintes figurent dans `scripts/download-tajweed-pages.mjs` et `src/data/tajweedImageHashes.json`. Les pages ne sont ni recoloriées ni recomposées.
 
-- [Quran Foundation, page layout](https://api-docs.quran.foundation/docs/tutorials/fonts/page-layout/) : éditions Tajweed 11 et QCF Tajweed V4 19. L'API donne les limites de pages et les lignes/mots. Elle requiert un client et un jeton ; elle ne fournit pas un jeu d'images de pages avec coordonnées en pixels de chaque verset.
-- [Quran Foundation, fonts](https://api-docs.quran.foundation/docs/tutorials/fonts/font-rendering/) : police couleur par page pour QCF Tajweed V4. C'est une voie possible pour un futur rendu traditionnel avec interactions, sous réserve de l'accès développeur et de ses [conditions](https://api-docs.quran.foundation/legal/developer-terms/).
-- [QuranHub, quran-pages-images](https://github.com/QuranHub/quran-pages-images) : 604 images JPEG dans `easyquran.com/hafs-tajweed`. Le dépôt fournit des coordonnées pour une autre édition (`ayat/hafs`), pas pour ces images Tajweed. Son README annonce GPLv3 alors que le fichier LICENSE contient l'Unlicense. La provenance `easyquran.com` renvoie à Dar Al Maarifah, dont le [site officiel](https://www.easyquran.com/) indique « All rights reserved ». Le dépôt ne prouve donc pas une autorisation de redistribution des pages.
-- [Quran SVG](https://github.com/quran-ws/quran-svg) : pages vectorielles et polygones d'ayah cohérents pour leurs propres éditions Hafs. Elles ne sont pas le Moushaf Tajweed coloré demandé.
-- [Quran.ws, Elements + Tajweed](https://quran.ws/docs/concepts/text-vs-visual/) : piste ouverte et mieux documentée pour colorer avec précision une page imprimée issue de leur propre édition Hafs, à partir des formes de lettres et signes, puis réutiliser ses polygones de versets. Son rendu mobile demande une intégration supplémentaire du moteur de pages et ne reproduit pas l'édition EasyQuran de la capture. Les [licences par ressource](https://quran.ws/docs/reference/licensing/) ont été examinées ; le rendu final devra être validé page par page avant d'être proposé comme mode actif.
+Les pages 2, 3, 100, 555 et 604 ont été comparées visuellement avec les limites Hafs utilisées dans l'application. Cette vérification ponctuelle ne démontre pas encore que **chaque** limite des 604 pages est identique. En cas de différence, la correspondance verset/page doit être corrigée dans les données propres à cette édition, sans toucher aux données du Moushaf de Médine.
 
-Les coordonnées du Moushaf de Médine inclus dans l'application ne sont **pas** réutilisées sur les images EasyQuran. Leur mise en page est différente ; les employer ferait sélectionner ou surligner le mauvais verset.
+## Fonctions actuellement utilisables
 
-## Conditions d'activation
+- Tourner les 604 pages par geste ou flèche ; conserver le numéro de page lors du changement de mode.
+- Lire une séance ou un passage sélectionné avec le lecteur audio existant, ses récitants et ses répétitions.
+- Passer à la traduction française par page et revenir à l'image sans interrompre l'audio.
+- Lire en plein écran et masquer le lecteur flottant.
 
-1. Obtenir une licence explicite pour une édition complète de pages Hafs Tajweed, ou utiliser la voie officielle Quran Foundation dans les limites de son accord développeur.
-2. Constituer la liste vérifiée des 604 pages et de leurs limites de versets.
-3. Fournir et vérifier des polygones/rectangles de versets issus **des mêmes images/du même rendu**.
-4. Tester les pages avec changement de sourate, versets répartis sur plusieurs lignes, lecture audio, répétitions, suivi de page et appui long sur iPhone et Android.
+## Fonctions retenues jusqu'à vérification des positions
 
-Jusqu'à ces vérifications, l'option « Moushaf Tajweed » est visible mais indique clairement qu'elle est en préparation. Elle n'installe ni pages sous droits incertains ni surlignage approximatif. Le Moushaf de Médine et la Lecture simplifiée continuent de fonctionner.
+Le dépôt de pages ne contient pas de **coordonnées de versets pour ces images Tajweed**. Ses données `ayat/hafs` appartiennent à une autre édition. Les superposer ici risquerait de surligner ou de sélectionner le mauvais verset. En conséquence, le mode pages couleur ne montre aucun surlignage d'ayah, ne déclenche pas d'action par appui long sur l'image et ne tourne pas la page automatiquement avec l'audio. Les contrôles de sélection du passage dans le lecteur audio fonctionnent indépendamment. Les autres deux modes conservent leur suivi et leurs interactions existants.
+
+## Recherche des données de positionnement
+
+- [Quran Foundation, page layout](https://api-docs.quran.foundation/docs/tutorials/fonts/page-layout/) distingue les éditions Tajweed 11 et QCF Tajweed V4 19, mais ne donne pas les coordonnées en pixels des images EasyQuran. Ses données ne peuvent pas être transposées ici.
+- [QuranHub, quran-images-utils](https://github.com/QuranHub/quran-images-utils) contient un détecteur de médaillons d'ayah. Il nécessite un gabarit adapté aux pages EasyQuran et une vérification des 6 236 repères avant de pouvoir fournir une géométrie fiable. Une détection automatique seule ne suffit pas à authentifier chaque polygone de verset.
+- [Quran.ws, Elements + Tajweed](https://quran.ws/docs/concepts/text-vs-visual/) offre une autre voie, fondée sur ses propres pages et géométries Hafs, mais elle produit une édition visuelle différente des images EasyQuran choisies.
+
+L'activation du suivi sur image et de l'appui long exigera des positions propres à cette édition, un contrôle de la numérotation sur les 604 pages et des tests sur appareil réel. Aucun masque approximatif n'est présenté comme vérifié.
