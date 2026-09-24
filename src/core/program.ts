@@ -11,10 +11,11 @@ export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
 export type GoalPreset = 'lastTen' | 'sabbih' | 'amma' | 'toYasin' | 'half' | 'all';
 export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
-export type AppTheme = 'classic' | 'feminine';
+export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'; followAudio:boolean };
-export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences };
+// `tajweed` is kept as the stored key so existing preferences continue to work.
+export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'; followAudio:boolean };
+export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; lastRead?:{page:number;verseId:number;readAt:string} };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -44,10 +45,10 @@ export const defaultState = (): AppState => ({schema:1,onboardingDone:false,know
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:local,shouldPush:true};
-  const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader??local.reader;
-  if(profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader)return {state:remote,shouldPush:false};
+  const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader??local.reader,lastRead=remote.lastRead??local.lastRead;
+  if(profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
-  return {state:{...remote,profile,theme,notifications,reader,updatedAt},shouldPush:true};
+  return {state:{...remote,profile,theme,notifications,reader,lastRead,updatedAt},shouldPush:true};
 }
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();

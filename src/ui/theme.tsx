@@ -4,10 +4,18 @@ import { AppTheme } from '../core/program';
 
 const palettes={
   classic:{green:'#153F36',green2:'#276454',cream:'#F7F5EE',paper:'#FFFDF7',beige:'#E9E2D2',gold:'#B39559',text:'#20342E',muted:'#6C7B72',line:'#E4E7DF',red:'#9D554D',soft:'#ECF1EA',softBorder:'#CAD8CE',selected:'#EAF2EC',onDark:'#BFD6C9',onDarkSoft:'#C9DDCF',track:'#49756B',progress:'#DBC591',surahBadge:'#E8EFE8'},
-  feminine:{green:'#9D496B',green2:'#C76D91',cream:'#FFFAFC',paper:'#FFF5F8',beige:'#F3DCE5',gold:'#B39559',text:'#3C2833',muted:'#765B69',line:'#EBCAD8',red:'#9D554D',soft:'#F3DCE5',softBorder:'#DCA6BD',selected:'#F8E7EE',onDark:'#FBE4ED',onDarkSoft:'#F5D8E4',track:'#B9708D',progress:'#F3DCE5',surahBadge:'#F3DCE5'}
+  feminine:{green:'#9D496B',green2:'#C76D91',cream:'#FFFAFC',paper:'#FFF5F8',beige:'#F3DCE5',gold:'#B39559',text:'#3C2833',muted:'#765B69',line:'#EBCAD8',red:'#9D554D',soft:'#F3DCE5',softBorder:'#DCA6BD',selected:'#F8E7EE',onDark:'#FBE4ED',onDarkSoft:'#F5D8E4',track:'#B9708D',progress:'#F3DCE5',surahBadge:'#F3DCE5'},
+  lilac:{green:'#5F548E',green2:'#897AB5',cream:'#FBF9FF',paper:'#FFFCFF',beige:'#ECE4F5',gold:'#B89D65',text:'#2D2943',muted:'#716B86',line:'#E3DCF0',red:'#A45C67',soft:'#F0EBF8',softBorder:'#CFC5E3',selected:'#ECE6F6',onDark:'#EDE7FB',onDarkSoft:'#E0D8F2',track:'#9689BB',progress:'#D4C4EB',surahBadge:'#EEE8F8'},
+  night:{green:'#132B47',green2:'#315273',cream:'#F7F7F4',paper:'#FFFDF8',beige:'#E9E6DF',gold:'#B58942',text:'#1C2A3B',muted:'#68727D',line:'#DFE3E5',red:'#A85F57',soft:'#E9EEF1',softBorder:'#C4D2DB',selected:'#E8EFF4',onDark:'#D5E1E9',onDarkSoft:'#CBD7E1',track:'#5C7390',progress:'#D8AF68',surahBadge:'#E8EDF1'}
 };
 export const colors={...palettes.classic};
-export function applyTheme(theme:AppTheme){Object.assign(colors,palettes[theme]);}
+export function applyTheme(theme:AppTheme){Object.assign(colors,palettes[theme]??palettes.classic);}
+export const themeOptions=[
+  {key:'classic',name:'Vert Émeraude',description:'Classique et apaisant',swatches:['#153F36','#DCEBDD','#FFFDF7','#D4AA67']},
+  {key:'feminine',name:'Rose Poudré',description:'Doux et chaleureux',swatches:['#9D496B','#F3DCE5','#FFF5F8','#D18DA3']},
+  {key:'lilac',name:'Lilas & Perle',description:'Délicat et raffiné',swatches:['#5F548E','#D9CDEA','#F8F3FC','#B89D65']},
+  {key:'night',name:'Bleu Nuit & Or',description:'Sobre et élégant',swatches:['#132B47','#5C7390','#F4F1EA','#B58942']},
+] as const;
 export function Label({children,style}:{children:React.ReactNode;style?:any}){return <Text style={[{color:colors.text,fontSize:16},style]}>{children}</Text>}
 export function Title({children}:{children:React.ReactNode}){return <Text style={{fontSize:30,fontWeight:'700',color:colors.green,letterSpacing:-0.5}}>{children}</Text>}
 export function Card({children,style}:{children:React.ReactNode;style?:ViewStyle}){return <View style={[{backgroundColor:colors.paper,borderRadius:22,padding:18,borderWidth:1,borderColor:colors.line,marginBottom:14},style]}>{children}</View>}

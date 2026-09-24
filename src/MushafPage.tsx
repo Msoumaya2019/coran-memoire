@@ -6,7 +6,7 @@ import boundsRaw from './data/bounds.json';
 import {frenchVerse,tajweedColor,tajweedSpans,verseAtImagePoint} from './core/readerData';
 import {pageRange,Range,surahs,verseAt,verseId} from './core/quran';
 
-type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed';language:'ar'|'fr';playingVerseId:number|null;sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
+type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages';language:'ar'|'fr';playingVerseId:number|null;sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
 const bounds=boundsRaw as Record<string,number[][]>;
 
 export function MushafPage({page,width,height,mode,language,playingVerseId,sessionRange,showSession,masked,revealed,onVerseLongPress,onBlankLongPress,onTap}:Props){
@@ -16,7 +16,7 @@ export function MushafPage({page,width,height,mode,language,playingVerseId,sessi
   const verseSelected=(id:number)=>id===playingVerseId||(showSession&&id>=sessionRange.start&&id<=sessionRange.end);
   if(masked)return <Pressable onPress={onTap} style={{width,height,backgroundColor:colors.paper,borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:20,alignItems:'center',justifyContent:'center'}}><Label style={{color:colors.gold,fontSize:25}}>۞</Label><Label style={{color:colors.muted,textAlign:'center',marginTop:14}}>Récite les versets de mémoire.</Label>{revealed!==null&&ids.includes(revealed)&&<Label style={{fontSize:25,lineHeight:48,textAlign:'center',writingDirection:'rtl',marginTop:25}}>{verseAt(revealed).text} ۞</Label>}</Pressable>;
   if(language==='fr'||mode==='tajweed')return <View style={{width,minHeight:height,backgroundColor:colors.paper,borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:16}}>
-    <Label style={{textAlign:'center',color:colors.gold,fontSize:13,marginBottom:12}}>{language==='fr'?'Traduction française du sens des versets':`Moushaf Tajweed · page ${page}`}</Label>
+    <Label style={{textAlign:'center',color:colors.gold,fontSize:13,marginBottom:12}}>{language==='fr'?'Traduction française du sens des versets':`Lecture simplifiée · page ${page}`}</Label>
     {ids.map(id=>{const verse=verseAt(id),translation=frenchVerse(id),spans=language==='ar'?tajweedSpans(id):[];return <Pressable key={id} onLongPress={()=>onVerseLongPress(id)} delayLongPress={450} onPress={onTap} style={{padding:10,marginBottom:8,borderRadius:12,backgroundColor:verseSelected(id)?colors.selected:colors.paper,borderWidth:verseSelected(id)?1:0,borderColor:colors.green2}}>
       <Label style={{fontSize:12,color:colors.gold,marginBottom:5}}>{surahs[verse.surah-1].name} · verset {verse.ayah}</Label>
       {language==='fr'?<><Label style={{fontSize:16,lineHeight:25}}>{translation?.translation??'Traduction indisponible.'}</Label>{translation?.footnotes?<Label style={{fontSize:12,color:colors.muted,marginTop:5}}>{translation.footnotes}</Label>:null}</>:

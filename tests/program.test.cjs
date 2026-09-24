@@ -21,6 +21,18 @@ test('un nouveau téléphone récupère la sauvegarde distante avant tout progr�
   assert.equal(restored.shouldPush,true);
 });
 
+test('les quatre thèmes et la dernière lecture survivent à la synchronisation',()=>{
+  const base=p.defaultState();
+  for(const theme of ['classic','feminine','lilac','night']){
+    const local={...base,theme,lastRead:{page:42,verseId:262,readAt:'2026-09-24T08:00:00.000Z'}};
+    const remote={...base,theme,updatedAt:'2026-09-24T09:00:00.000Z'};
+    const merged=p.reconcileState(local,remote);
+    assert.equal(merged.state.theme,theme);
+    assert.deepEqual(merged.state.lastRead,local.lastRead);
+    assert.equal(merged.shouldPush,true);
+  }
+});
+
 test('la remise à zéro efface apprentissage et révisions et relance le questionnaire',()=>{
   let state=p.defaultState();
   state.profile={sex:'Femme',firstName:'Soumaya'};
