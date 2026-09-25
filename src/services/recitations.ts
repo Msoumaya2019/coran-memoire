@@ -4,12 +4,13 @@ import {supabase} from './sync';
 import {verseAt} from '../core/quran';
 
 export type LocalRecitation={id:string;userId:string;start:number;end:number;durationMs:number;uri:string;createdAt:string;syncStatus:'pending'|'uploading'|'synced'|'failed'};
-export type RemoteRecitation={id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string;created_at:string;listened_at?:string|null;display_name?:string};
+export type RemoteRecitation={id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string;created_at:string;listened_at?:string|null;display_name?:string;recognition_summary?:LocalRecitationAnalysis|null};
 export type VerseCorrection={id:string;recitation_id:string;verse_id:number;comment:string|null;voice_path:string|null;created_at:string;resolved_at:string|null};
 export type GeneralFeedback={id:string;recitation_id:string;comment:string|null;voice_path:string|null;created_at:string};
 
 const db=SQLite.openDatabaseSync('coran-memoire.db');
 db.execSync('CREATE TABLE IF NOT EXISTS local_recitations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, start_verse_id INTEGER NOT NULL, end_verse_id INTEGER NOT NULL, duration_ms INTEGER NOT NULL, uri TEXT NOT NULL, created_at TEXT NOT NULL, sync_status TEXT NOT NULL)');
+db.execSync('CREATE TABLE IF NOT EXISTS recitation_analysis (recitation_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, recognized INTEGER NOT NULL, uncertain INTEGER NOT NULL, omitted INTEGER NOT NULL, review_words TEXT NOT NULL)');
 const folder=new Directory(Paths.document,'recitations');
 const validRange=(start:number,end:number)=>Number.isInteger(start)&&Number.isInteger(end)&&start>=1&&end<=6236&&start<=end;
 const uid=()=>`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
@@ -18,10 +19,20 @@ export function localRecitations(userId:string):LocalRecitation[]{
   return db.getAllSync<{id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;uri:string;created_at:string;sync_status:LocalRecitation['syncStatus']}>('SELECT * FROM local_recitations WHERE user_id=? ORDER BY created_at DESC',userId).map(row=>({id:row.id,userId:row.user_id,start:row.start_verse_id,end:row.end_verse_id,durationMs:row.duration_ms,uri:row.uri,createdAt:row.created_at,syncStatus:row.sync_status}));
 }
 
+export type LocalRecitationAnalysis={recognized:number;uncertain:number;omitted:number;reviewWords:{verseId:number;word:string}[]};
+export function saveRecitationAnalysis(recitationId:string,userId:string,analysis:LocalRecitationAnalysis){
+  db.runSync('INSERT OR REPLACE INTO recitation_analysis (recitation_id,user_id,recognized,uncertain,omitted,review_words) VALUES (?,?,?,?,?,?)',recitationId,userId,analysis.recognized,analysis.uncertain,analysis.omitted,JSON.stringify(analysis.reviewWords));
+}
+export function localRecitationAnalysis(recitationId:string,userId:string):LocalRecitationAnalysis|null{
+  const row=db.getFirstSync<{recognized:number;uncertain:number;omitted:number;review_words:string}>('SELECT recognized,uncertain,omitted,review_words FROM recitation_analysis WHERE recitation_id=? AND user_id=?',recitationId,userId);
+  return row?{recognized:row.recognized,uncertain:row.uncertain,omitted:row.omitted,reviewWords:JSON.parse(row.review_words)}:null;
+}
+
 export async function saveLocalRecitation(sourceUri:string,start:number,end:number,durationMs:number,userId:string):Promise<LocalRecitation>{
   if(!validRange(start,end)||!userId||!sourceUri||durationMs<=0)throw new Error('Récitation ou passage invalide.');
   folder.create({idempotent:true,intermediates:true});
-  const id=uid(),extension=sourceUri.toLowerCase().includes('.3gp')?'.3gp':'.m4a';
+  const lower=sourceUri.toLowerCase();
+  const id=uid(),extension=lower.endsWith('.wav')?'.wav':lower.includes('.3gp')?'.3gp':'.m4a';
   const file=new File(folder,`${id}${extension}`);
   await new File(sourceUri).copy(file);
   const item:LocalRecitation={id,userId,start,end,durationMs,uri:file.uri,createdAt:new Date().toISOString(),syncStatus:'pending'};
@@ -32,6 +43,7 @@ export async function saveLocalRecitation(sourceUri:string,start:number,end:numb
 export function deleteLocalRecitation(item:LocalRecitation){
   new File(item.uri).delete();
   db.runSync('DELETE FROM local_recitations WHERE id=? AND user_id=?',item.id,item.userId);
+  db.runSync('DELETE FROM recitation_analysis WHERE recitation_id=? AND user_id=?',item.id,item.userId);
 }
 
 let syncing=false;
@@ -47,11 +59,13 @@ export async function syncPendingRecitations():Promise<void>{
       try{
         const file=new File(item.uri);
         if(!file.exists)throw new Error('Fichier local introuvable.');
-        const path=`${userId}/${item.id}${item.uri.endsWith('.3gp')?'.3gp':'.m4a'}`;
+        const extension=item.uri.endsWith('.wav')?'.wav':item.uri.endsWith('.3gp')?'.3gp':'.m4a';
+        const path=`${userId}/${item.id}${extension}`;
         const bytes=await file.bytes();
-        const {error:uploadError}=await supabase.storage.from('recitations').upload(path,bytes,{contentType:path.endsWith('.3gp')?'audio/3gpp':'audio/mp4',upsert:false});
+        const {error:uploadError}=await supabase.storage.from('recitations').upload(path,bytes,{contentType:extension==='.wav'?'audio/wav':extension==='.3gp'?'audio/3gpp':'audio/mp4',upsert:false});
         if(uploadError&&!/already exists|duplicate/i.test(uploadError.message))throw uploadError;
-        const {error:rowError}=await supabase.from('recitations').upsert({id:item.id,user_id:userId,start_verse_id:item.start,end_verse_id:item.end,duration_ms:item.durationMs,storage_path:path,created_at:item.createdAt},{onConflict:'id',ignoreDuplicates:true});
+        const analysis=localRecitationAnalysis(item.id,userId);
+        const {error:rowError}=await supabase.from('recitations').upsert({id:item.id,user_id:userId,start_verse_id:item.start,end_verse_id:item.end,duration_ms:item.durationMs,storage_path:path,created_at:item.createdAt,...(analysis?{recognition_summary:analysis}:{})},{onConflict:'id',ignoreDuplicates:true});
         if(rowError)throw rowError;
         db.runSync('UPDATE local_recitations SET sync_status=? WHERE id=?','synced',item.id);
       }catch{
@@ -65,7 +79,7 @@ export async function listRemoteRecitations(forAdmin=false):Promise<RemoteRecita
   if(!supabase)return [];
   const {data:{session}}=await supabase.auth.getSession();
   if(!session)return [];
-  let query=supabase.from('recitations').select('id,user_id,start_verse_id,end_verse_id,duration_ms,storage_path,created_at,listened_at').order('created_at',{ascending:false}).limit(forAdmin?200:100);
+  let query=supabase.from('recitations').select('id,user_id,start_verse_id,end_verse_id,duration_ms,storage_path,created_at,listened_at,recognition_summary').order('created_at',{ascending:false}).limit(forAdmin?200:100);
   if(!forAdmin)query=query.eq('user_id',session.user.id);
   const {data,error}=await query;
   if(error)throw error;
