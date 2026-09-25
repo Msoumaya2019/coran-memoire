@@ -1,4 +1,5 @@
 import {QcfV4Page} from './qcfV4';
+import {ayahMarkerHtml} from './ayahMarker';
 
 function escapeHtml(text:string){return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function glyph(code:string){return code.replace(/&#(?:x([0-9a-f]+)|([0-9]+));/gi,(_,hex:string,decimal:string)=>{
@@ -11,8 +12,8 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
   const font=`https://verses.quran.foundation/fonts/quran/hafs/v4/colrv1/woff2/p${data.page}.woff2`;
   const lines=data.lines.map(line=>`<div class="line" data-line="${line.number}">${line.words.map(word=>{
     const classes=['word',word.kind==='end'?'end':'',word.verseId===playingVerseId?'playing':'',difficultyIds.includes(word.verseId)?'difficult':'',word.verseId>=sessionStart&&word.verseId<=sessionEnd?'session':''].filter(Boolean).join(' ');
-    const content=word.kind==='end'?(word.unicode||'۝'):glyph(word.glyph);
-    return `<span class="${classes}" data-verse="${word.verseId}">${escapeHtml(content)}</span>`;
+    const content=word.kind==='end'?ayahMarkerHtml(word.verseKey):escapeHtml(glyph(word.glyph));
+    return `<span class="${classes}" data-verse="${word.verseId}" data-verse-key="${escapeHtml(word.verseKey)}">${content}</span>`;
   }).join('')}</div>`).join('');
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta charset="utf-8"><style>
 @font-face{font-family:qcf;src:url('${font}') format('woff2');font-display:block}
@@ -22,7 +23,10 @@ export function qcfV4Html(data:QcfV4Page,playingVerseId:number|null,difficultyId
 .word{display:inline-block;position:relative;border-radius:5px;flex-shrink:1;min-width:0}
 .word.playing{background:rgba(194,90,132,.24);box-shadow:inset 0 -2px 0 rgba(171,59,106,.75)}
 .word.difficult{background:rgba(225,67,67,.22)}.word.session:not(.playing):not(.difficult){background:rgba(207,178,104,.07)}
-.end{font-family:serif;color:#b99b59;font-size:.75em;margin-inline:1px}
+.end{display:inline-flex;align-items:center;justify-content:center;margin-inline:1px;flex-shrink:0;line-height:1}
+.ayah-ornament{display:block;width:1.48em;height:1.48em;overflow:visible}
+.end.playing,.end.difficult{background:transparent;box-shadow:none}
+.end.playing .ayah-ornament{filter:drop-shadow(0 0 3px rgba(171,59,106,.9))}
 </style></head><body><main id="page">${lines}</main><script>
 const bridge=window.ReactNativeWebView;let timer=null,startX=0,startY=0,held=false;
 function emit(value){bridge&&bridge.postMessage(JSON.stringify(value))}

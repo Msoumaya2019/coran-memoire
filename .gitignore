@@ -1,6 +1,7 @@
 node_modules/
 .expo/
 .expo-export-check/
+.expo-export-check-ios/
 .env
 .env.*.local
 dist/

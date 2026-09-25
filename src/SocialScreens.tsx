@@ -24,7 +24,7 @@ const errorText=(e:unknown)=>{
 };
 const heading=(title:string)=><Label style={{fontSize:18,fontWeight:'700',color:colors.green,marginTop:18,marginBottom:8}}>{title}</Label>;
 
-export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onClose:()=>void;initialLinkId?:string|null;initialCode?:string|null;shareText:string}){
+export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,shareText}:{onClose:()=>void;onUnreadChange?:()=>void;initialLinkId?:string|null;initialCode?:string|null;shareText:string}){
   const [profile,setProfile]=useState<social.FriendProfile|null>(null);
   const [links,setLinks]=useState<social.FriendLink[]>([]);
   const [groups,setGroups]=useState<social.FriendGroup[]>([]);
@@ -80,7 +80,7 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
     if(!olderExhausted.current&&latest.length===50)setHasOlder(true);
     const newest=latest[latest.length-1]?.id??null;
     if(newest&&newest!==newestMessage.current){newestMessage.current=newest;setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),120);}
-    if(selected.kind==='link'){await social.markConversationRead(selected.id);typingChannel.current?.send({type:'broadcast',event:'read',payload:{userId:myId,at:new Date().toISOString()}}).catch(()=>{});}
+    if(selected.kind==='link'){await social.markConversationRead(selected.id);onUnreadChange?.();typingChannel.current?.send({type:'broadcast',event:'read',payload:{userId:myId,at:new Date().toISOString()}}).catch(()=>{});}
     if(selected.kind==='group')setMembers(await social.listGroupMembers(selected.id));
     else{const [goals,dates]=await Promise.all([social.listSharedGoals(selected.id),social.listAppointments(selected.id)]);setSharedGoals(goals);setAppointments(dates);
       const link=links.find(l=>l.id===selected.id);if(link){const other=link.requester_id===myId?link.recipient_id:link.requester_id;setOverview(await social.friendOverview(other));setOtherReadAt(await social.otherReadAt(selected.id,other));}}
