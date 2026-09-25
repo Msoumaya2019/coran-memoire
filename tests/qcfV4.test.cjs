@@ -47,3 +47,49 @@ test('un verset à cheval sur deux pages ne transporte pas ses mots sur la mauva
   assert.equal(parsed.lines[0].words.length,1);
   assert.equal(parsed.lines[0].words[0].position,2);
 });
+
+test('la page 603 réserve trois bandeaux et trois Basmala aux changements de sourate',()=>{
+  const layout=[
+    [109,[3,3,4,4,5,5]],
+    [110,[8,9,10]],
+    [111,[13,13,14,14,15]],
+  ];
+  const fixture={pagination:{total_pages:1},verses:layout.flatMap(([surah,lineNumbers])=>lineNumbers.map((line,index)=>({
+    verse_key:`${surah}:${index+1}`,
+    words:[
+      {position:1,page_number:603,line_number:line,char_type_name:'word',code_v2:'ﱁ'},
+      {position:2,page_number:603,line_number:line,char_type_name:'end',text_qpc_hafs:String(index+1)},
+    ],
+  })))};
+  const parsed=parseQcfV4Page(603,fixture);
+  assert.deepEqual(parsed.decorations.map(item=>[item.line,item.kind,item.surah]),[
+    [1,'surahHeader',109],[2,'basmala',109],
+    [6,'surahHeader',110],[7,'basmala',110],
+    [11,'surahHeader',111],[12,'basmala',111],
+  ]);
+  const html=qcfV4Html(parsed,verseId(110,2),[],0,0);
+  assert.match(html,/grid-template-rows:repeat\(15,minmax\(0,1fr\)\)/);
+  assert.match(html,/class="mushaf-row surah-header" data-line="6" data-surah="110" style="grid-row:6"/);
+  assert.match(html,/class="mushaf-row basmala" data-line="7" data-surah="110" style="grid-row:7"/);
+  assert.match(html,/class="mushaf-row line" data-line="8" style="grid-row:8"/);
+  assert.equal((html.match(/class="mushaf-row basmala"/g)||[]).length,3);
+  assert.equal((html.match(/class="word end/g)||[]).length,14);
+});
+
+test('Al-Fatiha et At-Tawbah ne reçoivent aucune Basmala décorative supplémentaire',()=>{
+  for(const [surah,pageNumber] of [[1,1],[9,187]]){
+    const fixture={pagination:{total_pages:1},verses:[{verse_key:`${surah}:1`,words:[
+      {position:1,page_number:pageNumber,line_number:2,char_type_name:'word',code_v2:'ﱁ'},
+    ]}]};
+    const parsed=parseQcfV4Page(pageNumber,fixture);
+    assert.deepEqual(parsed.decorations,[{line:1,kind:'surahHeader',surah}]);
+    assert.doesNotMatch(qcfV4Html(parsed,null,[],0,0),/class="mushaf-row basmala"/);
+  }
+});
+
+test('une place de bandeau non vérifiée n’entraîne pas une ligne artificiellement comprimée',()=>{
+  const fixture={pagination:{total_pages:1},verses:[{verse_key:'109:1',words:[
+    {position:1,page_number:603,line_number:1,char_type_name:'word',code_v2:'ﱁ'},
+  ]}]};
+  assert.throws(()=>parseQcfV4Page(603,fixture),/non vérifié/);
+});

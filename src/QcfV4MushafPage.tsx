@@ -41,6 +41,7 @@ export function QcfV4MushafPage({page,width,height,playingVerseId,difficultyIds,
       const message=JSON.parse(event.nativeEvent.data);
       if(message.type==='ready')setFontReady(true);
       if(message.type==='font-error')setError('La police Tajweed ne s’est pas chargée.');
+      if(message.type==='layout-error')setError(`La ligne ${message.line||'concernée'} ne tient pas sans réduire le texte. La page imprimée est affichée.`);
       if(message.type==='verse'&&data&&Number.isInteger(message.id)&&message.id>=data.firstVerseId&&message.id<=data.lastVerseId)onVerseLongPress(message.id);
       if(message.type==='tap')onTap();
     }catch{/* Ignore messages unrelated to the reader. */}

@@ -10,7 +10,8 @@ export type QcfV4Word = {
   unicode:string;
 };
 
-export type QcfV4Page = {page:number;lines:{number:number;words:QcfV4Word[]}[];firstVerseId:number;lastVerseId:number};
+export type QcfV4Decoration={line:number;kind:'surahHeader'|'basmala';surah:number};
+export type QcfV4Page = {page:number;lines:{number:number;words:QcfV4Word[]}[];decorations:QcfV4Decoration[];rowCount:number;firstVerseId:number;lastVerseId:number};
 
 type ApiWord = {position?:unknown;page_number?:unknown;line_number?:unknown;char_type_name?:unknown;code_v2?:unknown;text_qpc_hafs?:unknown};
 type ApiVerse = {verse_key?:unknown;words?:unknown};
@@ -23,6 +24,7 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
   if(!response||!Array.isArray(response.verses)||response.verses.length===0||response.pagination?.total_pages!==1)
     throw new Error('Réponse QCF V4 incomplète : la page entière est nécessaire.');
   const lines=new Map<number,QcfV4Word[]>();
+  const surahStarts=new Map<number,number>();
   let firstVerseId=0,lastVerseId=0;
   for(const verse of response.verses as ApiVerse[]){
     if(typeof verse.verse_key!=='string'||!/^\d{1,3}:\d{1,3}$/.test(verse.verse_key)||!Array.isArray(verse.words)||verse.words.length===0)
@@ -43,6 +45,7 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
       if(kind==='word'&&(!word.code_v2||typeof word.code_v2!=='string'))throw new Error('Glyphe Tajweed QCF V4 manquant.');
       const line=Number(word.line_number);
       const mapped:QcfV4Word={verseId:id,verseKey:verse.verse_key,position:Number(word.position),line,kind,glyph:typeof word.code_v2==='string'?word.code_v2:'',unicode:typeof word.text_qpc_hafs==='string'?word.text_qpc_hafs:''};
+      if(ayah===1&&kind==='word'&&Number(word.position)===1)surahStarts.set(surah,line);
       if(!lines.has(line))lines.set(line,[]);
       lines.get(line)!.push(mapped);
       if(!firstVerseId)firstVerseId=id;
@@ -50,6 +53,20 @@ export function parseQcfV4Page(page:number,input:unknown):QcfV4Page {
     }
   }
   if(!firstVerseId)throw new Error('Aucun mot sur cette page QCF V4.');
+  const rowCount=Math.max(15,...lines.keys());
+  const decorations:QcfV4Decoration[]=[];
+  const occupied=new Set(lines.keys());
+  for(const [surah,firstLine] of surahStarts){
+    // QCF V4 reserves one line for the chapter title, then one for Basmala,
+    // except Al-Fatiha (its Basmala is ayah 1) and At-Tawbah (no Basmala).
+    const hasBasmala=surah!==1&&surah!==9;
+    const headerLine=firstLine-(hasBasmala?2:1);
+    if(headerLine<1||occupied.has(headerLine)||hasBasmala&&(occupied.has(firstLine-1)||firstLine-1<1))
+      throw new Error(`Emplacement du bandeau de la sourate ${surah} non vérifié sur cette page QCF V4.`);
+    decorations.push({line:headerLine,kind:'surahHeader',surah});
+    occupied.add(headerLine);
+    if(hasBasmala){decorations.push({line:firstLine-1,kind:'basmala',surah});occupied.add(firstLine-1);}
+  }
   const ordered=[...lines].sort((a,b)=>a[0]-b[0]).map(([number,words])=>({number,words}));
-  return {page,lines:ordered,firstVerseId,lastVerseId};
+  return {page,lines:ordered,decorations:decorations.sort((a,b)=>a.line-b.line),rowCount,firstVerseId,lastVerseId};
 }
