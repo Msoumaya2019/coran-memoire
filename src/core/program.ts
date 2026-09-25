@@ -46,7 +46,7 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'classic',notifications:{messages:true,learning:true},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'classic',notifications:{messages:true,learning:false},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:local,shouldPush:true};

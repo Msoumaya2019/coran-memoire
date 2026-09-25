@@ -2,7 +2,6 @@ import { AppState as DeviceAppState, Platform } from 'react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { learningReminderBody, learningReminderTitle, reminderPlan, revisionReminderDates } from '../core/notificationPlan';
 import { currentUser, supabase } from './sync';
 
 const reminderKind='learning-reminder';
@@ -59,20 +58,11 @@ export async function ensureNotificationPermission(prompt=false){
   return result.granted||result.ios?.status===Notifications.IosAuthorizationStatus.PROVISIONAL;
 }
 
-export function scheduleLearningReminders(days:number[],enabled:boolean):Promise<void>{
-  const plan=reminderPlan(days,enabled);
+export function cancelAutomaticReminders():Promise<void>{
   const next=scheduleQueue.catch(()=>{}).then(async()=>{
     const scheduled=await Notifications.getAllScheduledNotificationsAsync();
-    await Promise.all(scheduled.filter(item=>item.content.data?.kind===reminderKind)
+    await Promise.all(scheduled.filter(item=>[reminderKind,revisionKind].includes(String(item.content.data?.kind)))
       .map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
-    if(!plan.length)return;
-    if(!await ensureNotificationPermission())throw new Error('Autorise les notifications dans les réglages du téléphone.');
-    for(const item of plan){
-      await Notifications.scheduleNotificationAsync({
-        content:{title:learningReminderTitle,body:learningReminderBody,data:{kind:reminderKind,day:item.day},sound:'default'},
-        trigger:{type:Notifications.SchedulableTriggerInputTypes.WEEKLY,weekday:item.expoWeekday,hour:item.hour,minute:item.minute,channelId:'learning'},
-      });
-    }
   });
   scheduleQueue=next;
   return next;
@@ -115,21 +105,9 @@ export async function saveNotificationPreferences(preferences:{messages:boolean;
   if(error)throw error;
 }
 
-export function scheduleRevisionReminder(dueDates:string[],enabled:boolean):Promise<void>{
-  const next=scheduleQueue.catch(()=>{}).then(async()=>{
-    const scheduled=await Notifications.getAllScheduledNotificationsAsync();
-    await Promise.all(scheduled.filter(item=>item.content.data?.kind===revisionKind).map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
-    const dates=revisionReminderDates(dueDates,enabled);
-    if(!dates.length||!await ensureNotificationPermission())return;
-    for(const date of dates)await Notifications.scheduleNotificationAsync({content:{title:'Un passage t’attend en révision',body:'Retrouve les versets à consolider dans Mes révisions.',data:{kind:revisionKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DATE,date,channelId:'learning'}});
-  });
-  scheduleQueue=next;
-  return next;
-}
-
 export async function testLocalNotification(){
   if(!await ensureNotificationPermission(true))throw new Error('Autorise les notifications dans les réglages du téléphone.');
-  await Notifications.scheduleNotificationAsync({content:{title:learningReminderTitle,body:learningReminderBody,data:{kind:reminderKind,test:true},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,seconds:5,channelId:'learning'}});
+  await Notifications.scheduleNotificationAsync({content:{title:'Test des notifications',body:'Les notifications sont autorisées sur ce téléphone.',data:{kind:'notification-test'},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,seconds:5,channelId:'learning'}});
 }
 
 export async function scheduledReminderCounts(){
