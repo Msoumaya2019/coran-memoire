@@ -74,8 +74,8 @@ create policy feedback_admin_insert on public.recitation_feedback for insert to 
 with check (private.is_app_admin() and admin_id=(select auth.uid()));
 
 insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-values ('recitations','recitations',false,52428800,array['audio/mp4','audio/3gpp','audio/m4a','audio/wav'])
-on conflict (id) do update set public=false,file_size_limit=52428800,allowed_mime_types=array['audio/mp4','audio/3gpp','audio/m4a','audio/wav'];
+values ('recitations','recitations',false,52428800,array['audio/mp4','audio/3gpp','audio/m4a'])
+on conflict (id) do update set public=false,file_size_limit=52428800,allowed_mime_types=array['audio/mp4','audio/3gpp','audio/m4a'];
 
 drop policy if exists recitation_files_owner_insert on storage.objects;
 create policy recitation_files_owner_insert on storage.objects for insert to authenticated
