@@ -46,7 +46,7 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'classic',notifications:{messages:true,learning:false},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'traditional',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:local,shouldPush:true};
@@ -66,7 +66,7 @@ export function accountState(userId:string,cached:AppState|null,remote:AppState|
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),userId:previous?.userId,profile:previous?.profile,theme:previous?.theme??'classic',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),userId:previous?.userId,profile:previous?.profile,theme:previous?.theme??'lilac',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'traditional',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }

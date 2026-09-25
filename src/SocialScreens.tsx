@@ -1,5 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
-import {Alert,KeyboardAvoidingView,PanResponder,Platform,Pressable,ScrollView,Share,TextInput,View} from 'react-native';
+import {Alert,Keyboard,KeyboardAvoidingView,PanResponder,Platform,Pressable,ScrollView,Share,TextInput,View} from 'react-native';
 import {createAudioPlayer} from 'expo-audio';
 import {Button,Card,CheckChoice,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
@@ -47,12 +47,21 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   const [hasOlder,setHasOlder]=useState(false),[loadingOlder,setLoadingOlder]=useState(false);
   const [otherReadAt,setOtherReadAt]=useState<string|null>(null),[otherTyping,setOtherTyping]=useState(false);
   const [showFriendTools,setShowFriendTools]=useState(false);
+  const [keyboardOpen,setKeyboardOpen]=useState(false);
   const typingChannel=useRef<ReturnType<NonNullable<typeof supabase>['channel']>|null>(null);
   const typingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const outgoingTypingTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
   const newestMessage=useRef<string|null>(null),olderExhausted=useRef(false);
   const audioPlayer=useRef<ReturnType<typeof createAudioPlayer>|null>(null);
   useEffect(()=>()=>audioPlayer.current?.release(),[]);
+  useEffect(()=>{
+    const shown=Keyboard.addListener('keyboardDidShow',()=>{
+      setKeyboardOpen(true);
+      requestAnimationFrame(()=>scrollRef.current?.scrollToEnd({animated:true}));
+    });
+    const hidden=Keyboard.addListener('keyboardDidHide',()=>setKeyboardOpen(false));
+    return()=>{shown.remove();hidden.remove();};
+  },[]);
   const backSwipe=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(selected){setSelected(null);setOverview(null);}else onClose();}}),[selected,onClose]);
   const room=selected?.kind==='link'?{linkId:selected.id}:{groupId:selected?.id};
   const load=async()=>{
@@ -103,7 +112,7 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
   const sender=(id:string)=>id===myId?'Moi':members.find(m=>m.user_id===id)?.profile?.display_name??links.find(l=>otherId(l)===id)?.other?.display_name??'Membre';
   const send=()=>act(async()=>{await social.sendMessage(room,draft);setDraft('');typingChannel.current?.send({type:'broadcast',event:'typing',payload:{userId:myId,active:false}}).catch(()=>{});},'');
   const playSharedRecitation=async(message:social.ChatMessage)=>{if(!message.recitation){setNotice('Cet enregistrement n’est plus disponible.');return;}try{if(audioMessageId===message.id&&audioPlayer.current){audioPlayer.current.pause();setAudioMessageId(null);return;}audioPlayer.current?.release();const uri=await signedAudioUrl(message.recitation.storage_path);audioPlayer.current=createAudioPlayer({uri});audioPlayer.current.play();setAudioMessageId(message.id);}catch(error){setNotice(errorText(error));}};
-  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined} {...backSwipe.panHandlers}>
+  return <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':'height'} {...backSwipe.panHandlers}>
     <ScrollView ref={scrollRef} style={{flex:1}} keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:45}} onScroll={event=>{if(selected&&hasOlder&&!loadingOlder&&event.nativeEvent.contentOffset.y<24)loadOlder().catch(()=>{});}} scrollEventThrottle={200}>
     {selected&&<Button secondary onPress={()=>{audioPlayer.current?.pause();setAudioMessageId(null);setSelected(null);setOverview(null);}}>← Mes amis</Button>}
     {selected?.kind==='link'?<View style={{flexDirection:'row',alignItems:'center',gap:10,marginBottom:10}}><FriendAvatar name={selected.name} path={links.find(link=>link.id===selected.id)?.other?.avatar_path} /><View style={{flex:1}}><View style={{flexDirection:'row',alignItems:'center',gap:12}}><Title>{selected.name}</Title><Pressable accessibilityRole="button" accessibilityLabel={`Signaler la conversation avec ${selected.name}`} onPress={()=>{const lastReceived=[...messages].reverse().find(message=>message.sender_id!==myId&&!message.deleted_at);if(lastReceived)setReportTarget(lastReceived.id);else setNotice('Aucun message reçu à signaler dans cette conversation.');}}><Label style={{fontSize:12,color:colors.green2,fontWeight:'700'}}>Signaler</Label></Pressable></View><Label style={{fontSize:12,color:colors.muted}}>{otherTyping?'Écrit un message…':overview?.is_online?'En ligne':'Hors ligne'}</Label></View></View>:<Title>{selected?selected.name:'Mes amis'}</Title>}
@@ -158,10 +167,12 @@ export function FriendsScreen({onClose,initialLinkId,initialCode,shareText}:{onC
       {reportTarget?<Card><Label>Signaler cette conversation à la modération</Label><Field value={reason} onChangeText={setReason} placeholder="Motif du signalement" /><Button small disabled={reason.trim().length<3} onPress={()=>act(async()=>{await social.reportMessage(reportTarget,reason);setReportTarget('');setReason('');},'Signalement envoyé.')}>Envoyer</Button><Button small secondary onPress={()=>setReportTarget('')}>Annuler</Button></Card>:null}
     </>}
     </ScrollView>
-    {selected?<View style={{paddingHorizontal:18,paddingVertical:8,backgroundColor:colors.cream,borderTopWidth:1,borderColor:colors.line}}>
-      <TextInput style={{minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={value=>{setDraft(value);if(outgoingTypingTimer.current)clearTimeout(outgoingTypingTimer.current);outgoingTypingTimer.current=setTimeout(()=>typingChannel.current?.send({type:'broadcast',event:'typing',payload:{userId:myId,active:!!value.trim()}}).catch(()=>{}),400);}} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
-      <Button disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
-      {selected.kind==='link'?<Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,shareText,'progress'),'Étape partagée avec cet ami.')}>Partager volontairement mon étape</Button>:null}
+    {selected?<View style={{paddingHorizontal:12,paddingVertical:6,backgroundColor:colors.cream,borderTopWidth:1,borderColor:colors.line}}>
+      <View style={{flexDirection:'row',alignItems:'flex-end',gap:8}}>
+        <TextInput style={{flex:1,minHeight:48,maxHeight:110,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,borderRadius:14,padding:12,color:colors.green,textAlignVertical:'top'}} multiline maxLength={2000} value={draft} onChangeText={value=>{setDraft(value);if(outgoingTypingTimer.current)clearTimeout(outgoingTypingTimer.current);outgoingTypingTimer.current=setTimeout(()=>typingChannel.current?.send({type:'broadcast',event:'typing',payload:{userId:myId,active:!!value.trim()}}).catch(()=>{}),400);}} onFocus={()=>setTimeout(()=>scrollRef.current?.scrollToEnd({animated:true}),200)} placeholder="Écris un message à tes amis…" placeholderTextColor={colors.muted} />
+        <Button small disabled={busy||!draft.trim()||!!suspension&&(!suspension.suspended_until||new Date(suspension.suspended_until)>new Date())} onPress={send}>Envoyer</Button>
+      </View>
+      {selected.kind==='link'&&!keyboardOpen?<Button secondary disabled={busy} small onPress={()=>act(()=>social.sendMessage(room,shareText,'progress'),'Étape partagée avec cet ami.')}>Partager volontairement mon étape</Button>:null}
     </View>:null}
   </KeyboardAvoidingView>;
 }

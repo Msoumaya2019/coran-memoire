@@ -52,7 +52,7 @@ begin
   for v_device in
     select d.expo_push_token from public.push_devices d
       where d.user_id=v_recipient
-        and not (d.active_link_id=new.link_id
+        and not (d.active_link_id is not null and d.active_link_id=new.link_id
           and d.last_active_at>now()-interval '30 seconds')
   loop
     perform net.http_post(

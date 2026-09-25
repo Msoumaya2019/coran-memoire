@@ -8,8 +8,8 @@ const palettes={
   lilac:{green:'#5F548E',green2:'#897AB5',cream:'#FBF9FF',paper:'#FFFCFF',beige:'#ECE4F5',gold:'#B89D65',text:'#2D2943',muted:'#716B86',line:'#E3DCF0',red:'#A45C67',soft:'#F0EBF8',softBorder:'#CFC5E3',selected:'#ECE6F6',onDark:'#EDE7FB',onDarkSoft:'#E0D8F2',track:'#9689BB',progress:'#D4C4EB',surahBadge:'#EEE8F8'},
   night:{green:'#132B47',green2:'#315273',cream:'#F7F7F4',paper:'#FFFDF8',beige:'#E9E6DF',gold:'#B58942',text:'#1C2A3B',muted:'#68727D',line:'#DFE3E5',red:'#A85F57',soft:'#E9EEF1',softBorder:'#C4D2DB',selected:'#E8EFF4',onDark:'#D5E1E9',onDarkSoft:'#CBD7E1',track:'#5C7390',progress:'#D8AF68',surahBadge:'#E8EDF1'}
 };
-export const colors={...palettes.classic};
-export function applyTheme(theme:AppTheme){Object.assign(colors,palettes[theme]??palettes.classic);}
+export const colors={...palettes.lilac};
+export function applyTheme(theme:AppTheme){Object.assign(colors,palettes[theme]??palettes.lilac);}
 export const themeOptions=[
   {key:'classic',name:'Vert Émeraude',description:'Classique et apaisant',swatches:['#153F36','#DCEBDD','#FFFDF7','#D4AA67']},
   {key:'feminine',name:'Rose Poudré',description:'Doux et chaleureux',swatches:['#9D496B','#F3DCE5','#FFF5F8','#D18DA3']},

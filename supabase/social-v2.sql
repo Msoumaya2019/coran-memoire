@@ -84,7 +84,7 @@ begin
   select coalesce(p.message_preview_enabled,true) into v_preview from public.notification_preferences p where p.user_id=v_recipient;
   select p.display_name into v_sender from public.friend_profiles p where p.id=new.sender_id;
   for v_device in select d.expo_push_token from public.push_devices d
-    where d.user_id=v_recipient and not (d.active_link_id=new.link_id and d.last_active_at>now()-interval '30 seconds')
+    where d.user_id=v_recipient and not (d.active_link_id is not null and d.active_link_id=new.link_id and d.last_active_at>now()-interval '30 seconds')
   loop
     perform net.http_post(url:='https://exp.host/--/api/v2/push/send',
       body:=jsonb_build_object('to',v_device.expo_push_token,
