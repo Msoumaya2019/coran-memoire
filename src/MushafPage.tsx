@@ -3,14 +3,19 @@ import {Image,Pressable,Text,View} from 'react-native';
 import {colors,Label} from './ui/theme';
 import {mushafImages} from './data/mushafImages';
 import boundsRaw from './data/bounds.json';
+import {mushafTajweedImages} from './data/mushafTajweedImages';
+import tajweedBoundsRaw from './data/mushaf-tajweed-bounds.json';
+import tajweedDimensionsRaw from './data/mushaf-tajweed-dimensions.json';
 import {frenchVerse,tajweedColor,tajweedSpans,verseAtImagePoint} from './core/readerData';
 import {pageRange,Range,surahs,verseAt,verseId} from './core/quran';
 
-type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
+type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
 const bounds=boundsRaw as Record<string,number[][]>;
 
 export function MushafPage({page,width,height,mode,language,playingVerseId,difficultyIds=[],sessionRange,showSession,masked,revealed,onVerseLongPress,onBlankLongPress,onTap}:Props){
-  const rows=bounds[String(page)]??[];
+  const colorPage=mode==='tajweedPages';
+  const [sourceWidth,sourceHeight]=colorPage?(tajweedDimensionsRaw as Record<string,number[]>)[String(page)]:[1920,3106];
+  const rows=(colorPage?tajweedBoundsRaw as Record<string,number[][]>:bounds)[String(page)]??[];
   const range=pageRange(page);
   const ids=Array.from({length:range.end-range.start+1},(_,index)=>range.start+index);
   const verseSelected=(id:number)=>id===playingVerseId||(showSession&&id>=sessionRange.start&&id<=sessionRange.end);
@@ -24,8 +29,8 @@ export function MushafPage({page,width,height,mode,language,playingVerseId,diffi
     </Pressable>;})}
     {language==='fr'?<Label style={{fontSize:11,color:colors.muted,marginTop:8}}>Traduction du sens : Rachid Maach · QuranEnc</Label>:<Label style={{fontSize:11,color:colors.muted,marginTop:8}}>Tajweed : cpfair, CC BY 4.0 · texte Hafs Tanzil 2017</Label>}
   </View>;
-  return <Pressable onPress={onTap} onLongPress={event=>{const {locationX,locationY}=event.nativeEvent;const id=verseAtImagePoint(rows,locationX-2,locationY-2,width-4,height-4);if(id===null)onBlankLongPress();else onVerseLongPress(id);}} delayLongPress={450} style={{width,height,backgroundColor:'white',borderWidth:2,borderColor:colors.beige,borderRadius:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}>
-    <Image source={mushafImages[page]} style={{width:width-4,height:height-4}} resizeMode="contain" />
-    {rows.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&(verseSelected(id)||difficultyIds.includes(id));}).map((row,index)=>{const id=verseId(row[0],row[1])!,active=id===playingVerseId,difficult=difficultyIds.includes(id);return <View key={index} pointerEvents="none" style={{position:'absolute',left:2+row[3]/1920*(width-4),top:2+row[5]/3106*(height-4),width:(row[4]-row[3])/1920*(width-4),height:(row[6]-row[5])/3106*(height-4),backgroundColor:difficult?'#E85B5B':active?'transparent':colors.gold,opacity:difficult?0.18:active?0.85:0.11,borderWidth:active?2:0,borderColor:colors.green,borderRadius:4}} />;})}
+  return <Pressable onPress={onTap} onLongPress={event=>{const {locationX,locationY}=event.nativeEvent;const id=verseAtImagePoint(rows,locationX-2,locationY-2,width-4,height-4,sourceWidth,sourceHeight);if(id===null)onBlankLongPress();else onVerseLongPress(id);}} delayLongPress={450} style={{width,height,backgroundColor:'white',borderWidth:2,borderColor:colors.beige,borderRadius:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}>
+    <Image source={colorPage?mushafTajweedImages[page]:mushafImages[page]} style={{width:width-4,height:height-4}} resizeMode="contain" />
+    {rows.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&(verseSelected(id)||difficultyIds.includes(id));}).map((row,index)=>{const id=verseId(row[0],row[1])!,active=id===playingVerseId,difficult=difficultyIds.includes(id);return <View key={index} pointerEvents="none" style={{position:'absolute',left:2+row[3]/sourceWidth*(width-4),top:2+row[5]/sourceHeight*(height-4),width:(row[4]-row[3])/sourceWidth*(width-4),height:(row[6]-row[5])/sourceHeight*(height-4),backgroundColor:difficult?'#E85B5B':active?colors.selected:colors.gold,opacity:difficult?0.18:active?0.42:0.11,borderWidth:active?2:0,borderColor:colors.green,borderRadius:4}} />;})}
   </Pressable>;
 }

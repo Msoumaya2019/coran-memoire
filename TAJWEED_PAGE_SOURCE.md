@@ -1,6 +1,8 @@
 # Moushaf Tajweed : sources, droits et limites techniques
 
-**Archive technique.** Le mode « Moushaf Tajweed » en pages a été retiré du lecteur. Les paragraphes ci-dessous décrivent son ancienne implémentation et les sources conservées dans l'historique du dépôt. L'application actuelle affiche le Moushaf de Médine et la Lecture simplifiée.
+**Nouveau mode actif :** le Moushaf Tajweed utilise désormais les pages originales et coordonnées de l’application Quran pour iOS. Voir [MUSHAF_TAJWEED_QURAN.md](MUSHAF_TAJWEED_QURAN.md).
+
+**Archive technique des anciennes versions.** Le mode « Moushaf Tajweed » en pages a été retiré du lecteur. Les paragraphes ci-dessous décrivent son ancienne implémentation et les sources conservées dans l'historique du dépôt. L'application actuelle affiche le Moushaf de Médine et la Lecture simplifiée.
 
 Le mode `tajweed` conservé dans les préférences est appelé **Lecture simplifiée**. L'ancien mode `tajweedPages` affichait **604 pages complètes distinctes** en couleur, dans leur mise en page traditionnelle. Les images proviennent du répertoire [`easyquran.com/hafs-tajweed`](https://github.com/QuranHub/quran-pages-images/tree/main/easyquran.com/hafs-tajweed) de QuranHub, attribué à Dar Al Maarifah / EasyQuran. Le propriétaire du projet a déclaré le 24 septembre 2026 disposer d'une **autorisation écrite** pour intégrer et redistribuer ces pages dans l'application et le dépôt public. Cette autorisation n'a pas été transmise au dépôt ; elle doit être conservée par le propriétaire.
 

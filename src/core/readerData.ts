@@ -39,9 +39,9 @@ export function tajweedSpans(id:number):TajweedSpan[]{
   return spans;
 }
 
-export function verseAtImagePoint(rows:number[][],x:number,y:number,width:number,height:number):number|null{
+export function verseAtImagePoint(rows:number[][],x:number,y:number,width:number,height:number,sourceWidth=1920,sourceHeight=3106):number|null{
   if(width<=0||height<=0||x<0||y<0||x>width||y>height)return null;
-  const sourceX=x/width*1920,sourceY=y/height*3106;
+  const sourceX=x/width*sourceWidth,sourceY=y/height*sourceHeight;
   const matches=rows.filter(row=>sourceX>=row[3]&&sourceX<=row[4]&&sourceY>=row[5]&&sourceY<=row[6]);
   if(!matches.length)return null;
   const row=matches.sort((a,b)=>(a[4]-a[3])*(a[6]-a[5])-(b[4]-b[3])*(b[6]-b[5]))[0];

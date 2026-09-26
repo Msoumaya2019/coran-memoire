@@ -21,3 +21,7 @@ Les références coraniques existantes restent inchangées. Les invocations dist
 Migration daily-contents.sql appliquée et testée avec transaction annulée : création, modification, programmation, unicité par date/type, rotation, favoris, refus des actions non administrateur, métadonnées des prononciations et lecture sans compte. 45 tests Node passent, dont l’exclusivité audio, ainsi que TypeScript.
 
 Les essais microphone, interruption, réécoute et affichage sur appareils physiques iOS/Android nécessitent la nouvelle build et restent à effectuer. L’ajout des audios originaux utilise l’option URL HTTPS ; aucun sélecteur/upload de fichier audio original n’a été ajouté.
+
+## Petites illustrations
+
+Dans le formulaire administrateur des rappels comme des invocations, le champ « Petite image : URL HTTPS » ajoute une vignette de 40 × 40 à côté du titre. Le texte arabe garde sa largeur et ses espacements. Une image indisponible est masquée. Aucun bucket, droit d’accès ou upload personnel ne change.

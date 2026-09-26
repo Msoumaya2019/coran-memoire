@@ -20,7 +20,8 @@ export function AdminDailyContents({onClose}:{onClose:()=>void}){
  <Field placeholder="Titre (facultatif)" value={edit.title??''} onChangeText={v=>update('title',v||null)} />
  {type==='invocation'&&<><Label>Arabe *</Label><Field multiline placeholder="Texte arabe" value={edit.arabic_text??''} onChangeText={v=>update('arabic_text',v)} /><Field placeholder="Phonétique *" value={edit.phonetic_text??''} onChangeText={v=>update('phonetic_text',v)} /></>}
  <Field multiline placeholder={type==='invocation'?'Traduction française *':'Texte du rappel *'} value={edit.french_text} onChangeText={v=>update('french_text',v)} />
- {type==='reminder'&&<><Field multiline placeholder="Explication courte (facultative)" value={edit.explanation??''} onChangeText={v=>update('explanation',v||null)} /><Field placeholder="Illustration : URL HTTPS (facultative)" value={edit.image_url??''} onChangeText={v=>update('image_url',v||null)} /></>}
+ {type==='reminder'&&<><Field multiline placeholder="Explication courte (facultative)" value={edit.explanation??''} onChangeText={v=>update('explanation',v||null)} /></>}
+ <Field placeholder="Petite image : URL HTTPS (facultative)" value={edit.image_url??''} onChangeText={v=>update('image_url',v||null)} />
  <Field placeholder="Source fiable *" value={edit.source} onChangeText={v=>update('source',v)} /><Field placeholder="Référence (facultative)" value={edit.reference??''} onChangeText={v=>update('reference',v||null)} />
  <Field placeholder="Audio MP3/M4A/AAC : URL HTTPS (facultative)" value={edit.audio_url??''} onChangeText={v=>update('audio_url',v||null)} />
  <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Label>Actif</Label><Switch value={edit.is_active} onValueChange={v=>update('is_active',v)} /></View>

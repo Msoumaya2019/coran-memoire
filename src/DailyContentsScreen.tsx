@@ -8,14 +8,14 @@ import {RecitationRecorder} from './RecitationRecorder';
 
 let activeAudio:ReturnType<typeof createAudioPlayer>|null=null;
 export function ContentCard({item,userId,preview=false}:{item:service.DailyContent;userId?:string;preview?:boolean}){
- const [favorite,setFavorite]=useState(false),[notice,setNotice]=useState(''),[record,setRecord]=useState(false),[playing,setPlaying]=useState(false);
+ const [favorite,setFavorite]=useState(false),[notice,setNotice]=useState(''),[record,setRecord]=useState(false),[playing,setPlaying]=useState(false),[imageError,setImageError]=useState(false);
+ useEffect(()=>setImageError(false),[item.image_url]);
  const player=useRef<ReturnType<typeof createAudioPlayer>|null>(null);
  useEffect(()=>{let live=true;service.favorites(userId).then(ids=>{if(live)setFavorite(ids.includes(item.id));}).catch(e=>setNotice(String(e)));return()=>{live=false;player.current?.release();if(activeAudio===player.current)activeAudio=null;};},[item.id,userId]);
  const audio=()=>{try{if(playing&&player.current){player.current.pause();setPlaying(false);return;}activeAudio?.pause();if(!player.current)player.current=createAudioPlayer({uri:item.audio_url!});activeAudio=player.current;player.current.play();setPlaying(true);}catch(e){setNotice(String(e));}};
  useEffect(()=>{const timer=setInterval(()=>{if(player.current)setPlaying(player.current.playing);},250);return()=>clearInterval(timer);},[]);
  return <Card style={{padding:18,borderRadius:26}}>
-  {!!item.title&&<Label style={{fontWeight:'700',marginBottom:8}}>{item.title}</Label>}
-  {!!item.image_url&&<Image source={{uri:item.image_url}} resizeMode="cover" style={{height:120,borderRadius:15,marginBottom:12}} />}
+  {(!!item.title||!!item.image_url&&!imageError)&&<View style={{flexDirection:'row',alignItems:'center',gap:12,marginBottom:8}}><Label style={{flex:1,fontWeight:'700'}}>{item.title??(item.type==='invocation'?'Invocation':'Rappel')}</Label>{!!item.image_url&&!imageError&&<Image source={{uri:item.image_url}} onError={()=>setImageError(true)} accessible={false} resizeMode="contain" style={{width:40,height:40,borderRadius:10,marginLeft:'auto'}} />}</View>}
   {!!item.arabic_text&&<Label style={{fontSize:30,lineHeight:54,textAlign:'center',writingDirection:'rtl',color:colors.green,marginVertical:6}}>{item.arabic_text}</Label>}
   {!!item.phonetic_text&&<Label style={{fontStyle:'italic',textAlign:'center',color:colors.muted,marginBottom:12}}>{item.phonetic_text}</Label>}
   <Label style={{fontSize:18,lineHeight:28,textAlign:'center',marginVertical:8}}>{item.french_text}</Label>
