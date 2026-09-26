@@ -1,6 +1,7 @@
+import {createManagedAudioPlayer as createAudioPlayer} from './services/audioFocus';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {KeyboardAvoidingView,LayoutAnimation,PanResponder,Platform,Pressable,ScrollView,Text,View} from 'react-native';
-import {createAudioPlayer,setAudioModeAsync} from 'expo-audio';
+import {setAudioModeAsync} from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {audioRange,AudioPosition,nextAudioPosition,reciters,Reciter,RepeatCount,RepeatMode,resolveAudioSegment,verseAudioLabel} from './core/audio';
 import {pageRange,Range,reference,surahAt,surahs,verseAt,verseId} from './core/quran';

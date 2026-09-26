@@ -1,12 +1,14 @@
+import {createManagedAudioPlayer as createAudioPlayer} from './services/audioFocus';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Alert,Keyboard,KeyboardAvoidingView,PanResponder,Platform,Pressable,ScrollView,Share,TextInput,View} from 'react-native';
-import {createAudioPlayer} from 'expo-audio';
+
 import {Button,Card,CheckChoice,Choice,colors,Field,Label,Title} from './ui/theme';
 import {reference} from './core/quran';
 import {currentUser,supabase} from './services/sync';
 import * as social from './services/social';
 import {setActiveConversation,updatePushPresence} from './services/notifications';
 import {AdminRecitations} from './AdminRecitations';
+import {AdminDailyContents} from './AdminDailyContents';
 import {AdminAccounts} from './AdminAccounts';
 import {AdminNotifications} from './AdminNotifications';
 import {signedAudioUrl} from './services/recitations';
@@ -197,6 +199,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
 }
 
 export function AdminScreen({onClose}:{onClose:()=>void}){
+  const [dailyMode,setDailyMode]=useState(false);
   const [accountsMode,setAccountsMode]=useState(false);
   const [recitationMode,setRecitationMode]=useState(false);
   const [notificationMode,setNotificationMode]=useState(false);
@@ -219,11 +222,13 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     const until=duration==='forever'?null:new Date(Date.now()+Number(duration)*86400000).toISOString();
     await act(()=>social.suspendMember(target,reason.trim(),until));setTarget('');setReason('');
   };
+  if(dailyMode)return <AdminDailyContents onClose={()=>setDailyMode(false)} />;
   if(accountsMode)return <AdminAccounts onClose={()=>setAccountsMode(false)} />;
   if(recitationMode)return <AdminRecitations onClose={()=>setRecitationMode(false)} />;
   if(notificationMode)return <AdminNotifications onClose={()=>setNotificationMode(false)} />;
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
+    <Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
     <Button onPress={()=>setAccountsMode(true)}>Comptes et progression</Button>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
     <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>

@@ -21,6 +21,7 @@ import {RecitationsScreen} from './RecitationsScreen';
 import {gradeReviewTask,prepareReviewSchedule,reviewPlan,reviewsEnabled,ReviewTask,setReviewCycle,setReviewsEnabled,toggleDifficulty} from './core/review';
 import {chooseAvatar,removeAvatar,stageAvatar,syncStagedAvatar,uploadAvatar} from './services/avatars';
 import {FriendAvatar} from './ui/FriendAvatar';
+import {DailyContentsScreen,TodayContents} from './DailyContentsScreen';
 import {MessagingButton} from './ui/MessagingButton';
 
 type Tab='Accueil'|'Coran'|'Programme'|'Progrès'|'Amis';
@@ -47,6 +48,7 @@ function AppContent(){
   const [accountIntro,setAccountIntro]=useState<'checking'|'show'|'done'>('checking');
   const [notice,setNotice]=useState('');
   const [socialView,setSocialView]=useState<'friends'|'admin'|null>(null);
+  const [dailyOpen,setDailyOpen]=useState(false),[dailyId,setDailyId]=useState<string>();
   const [reviewOpen,setReviewOpen]=useState(false);
   const [recitationsOpen,setRecitationsOpen]=useState(false);
   const [pendingRecitationId,setPendingRecitationId]=useState<string|null>(null);
@@ -163,9 +165,10 @@ function AppContent(){
   const closeReader=()=>{if(reader){const latest=loadState();const verseId=pageOf(reader.range.start)===page?reader.range.start:pageRange(page).start;update(touch({...latest,lastRead:{page,verseId,readAt:new Date().toISOString()}}));}setReader(null);setReaderFullscreen(false);};
   const edgeBack=useMemo(()=>PanResponder.create({
     onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,
-    onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(wizard!==null){if(wizard>0)setWizard(wizard-1);else if(state.onboardingDone)setWizard(null);return;}if(utilityView){setUtilityView(null);return;}if(socialView){setSocialView(null);setPendingLinkId(null);return;}if(tab!=='Accueil')setTab('Accueil');},
-  }),[wizard,socialView,utilityView,tab,state.onboardingDone]);
+    onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(dailyOpen){setDailyOpen(false);setDailyId(undefined);return;}if(wizard!==null){if(wizard>0)setWizard(wizard-1);else if(state.onboardingDone)setWizard(null);return;}if(utilityView){setUtilityView(null);return;}if(socialView){setSocialView(null);setPendingLinkId(null);return;}if(tab!=='Accueil')setTab('Accueil');},
+  }),[dailyOpen,wizard,socialView,utilityView,tab,state.onboardingDone]);
   useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{
+    if(dailyOpen){setDailyOpen(false);return true;}
     if(reader){closeReader();return true;}
     if(recitationsOpen){setRecitationsOpen(false);setPendingRecitationId(null);return true;}
     if(utilityView){setUtilityView(null);return true;}
@@ -173,7 +176,7 @@ function AppContent(){
     if(socialView){setSocialView(null);setPendingLinkId(null);return true;}
     if(tab!=='Accueil'&&wizard===null){setTab('Accueil');return true;}
     return false;
-  });return()=>subscription.remove();},[reader,page,recitationsOpen,reviewOpen,socialView,utilityView,tab,wizard]);
+  });return()=>subscription.remove();},[dailyOpen,reader,page,recitationsOpen,reviewOpen,socialView,utilityView,tab,wizard]);
   const statsNow=stats(state,today),prog=progress(state);
   const todaySessions=state.sessions.filter(s=>s.date===today&&s.status==='todo');
   const due=reviewsEnabled(state)?state.revisions.filter(r=>r.due<=today):[];
@@ -181,17 +184,18 @@ function AppContent(){
   const finishEstimate=state.sessions.filter(s=>s.status==='todo').at(-1)?.date;
   applyTheme(state.theme??'lilac');
   return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}} {...(reader||socialView==='friends'||tab==='Amis'?{}:edgeBack.panHandlers)}><StatusBar hidden={readerFullscreen} />
-    {!reader&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&socialView!=='admin'&&<View style={{backgroundColor:colors.paper,borderBottomWidth:1,borderBottomColor:colors.line}}><View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:18,paddingTop:7,paddingBottom:5,gap:8}}>{utilityView?<Pressable accessibilityLabel="Retour" onPress={()=>setUtilityView(null)}><Label style={{fontSize:24}}>‹</Label></Pressable>:null}<Label style={{flex:1,fontSize:18,fontWeight:'800',color:colors.green}}>{utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'}</Label><ProfileHeaderButton firstName={state.profile?.firstName} onPress={()=>setUtilityView('profile')} /><Pressable accessibilityLabel="Ouvrir les réglages" onPress={()=>setUtilityView('settings')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Label style={{fontSize:22,color:colors.green}}>⚙</Label></Pressable></View>{!utilityView&&<View style={{flexDirection:'row',justifyContent:'space-around'}}>{(['Accueil','Coran','Programme','Progrès','Amis'] as Tab[]).map(name=><Pressable key={name} accessibilityRole="tab" accessibilityState={{selected:tab===name}} onPress={()=>{setTab(name);setSocialView(null);}} style={{paddingVertical:11,paddingHorizontal:3,borderBottomWidth:tab===name?2:0,borderBottomColor:colors.green}}><Label style={{fontSize:12,fontWeight:tab===name?'700':'500',color:tab===name?colors.green:colors.muted}}>{name}</Label></Pressable>)}</View>}</View>}
+    {!reader&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&socialView!=='admin'&&<View style={{backgroundColor:colors.paper,borderBottomWidth:1,borderBottomColor:colors.line}}><View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:18,paddingTop:7,paddingBottom:5,gap:8}}>{utilityView?<Pressable accessibilityLabel="Retour" onPress={()=>setUtilityView(null)}><Label style={{fontSize:24}}>‹</Label></Pressable>:null}<Label style={{flex:1,fontSize:18,fontWeight:'800',color:colors.green}}>{utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'}</Label><ProfileHeaderButton firstName={state.profile?.firstName} onPress={()=>setUtilityView('profile')} /><Pressable accessibilityLabel="Ouvrir les réglages" onPress={()=>setUtilityView('settings')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Label style={{fontSize:22,color:colors.green}}>⚙</Label></Pressable></View>{!utilityView&&<View style={{flexDirection:'row',justifyContent:'space-around'}}>{(['Accueil','Coran','Programme','Progrès','Amis'] as Tab[]).map(name=><Pressable key={name} accessibilityRole="tab" accessibilityState={{selected:tab===name}} onPress={()=>{setTab(name);setSocialView(null);}} style={{paddingVertical:11,paddingHorizontal:3,borderBottomWidth:tab===name?2:0,borderBottomColor:colors.green}}><Label style={{fontSize:12,fontWeight:tab===name?'700':'500',color:tab===name?colors.green:colors.muted}}>{name}</Label></Pressable>)}</View>}</View>}
     {accountIntro==='checking'?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Label>Ouverture de l’application…</Label></View>:accountIntro==='show'?<AccountWelcome onAuthenticated={activateAccount} onContinue={()=>{setAccountIntro('done');AsyncStorage.setItem('account-intro-complete','yes').catch(()=>{});}} />:reader?<ReaderScreen reader={reader} page={page} setPage={setPage} masked={masked} setMasked={setMasked} revealed={revealed} setRevealed={setRevealed} onClose={closeReader} onShareRecitation={id=>{setPendingRecitationId(id);setReader(null);setRecitationsOpen(true);}} onReviewDone={(task,grade)=>{const next=gradeReviewTask(state,task,grade);update(next);const upcoming=reviewPlan(next).session[0];if(upcoming)openReader({range:upcoming,reviewTask:upcoming});else if(!reviewOnly&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});else closeReader();}} state={state} update={update} fullscreen={readerFullscreen} setFullscreen={setReaderFullscreen} />:
+      dailyOpen?<DailyContentsScreen userId={state.userId} initialId={dailyId} onClose={()=>{setDailyOpen(false);setDailyId(undefined);}} />:
       wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizard} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
-      recitationsOpen?<RecitationsScreen initialRecitationId={pendingRecitationId} onClose={()=>{setRecitationsOpen(false);setPendingRecitationId(null);}} />:
+      recitationsOpen?<RecitationsScreen onViewInvocation={id=>{setDailyId(id);setDailyOpen(true);}} initialRecitationId={pendingRecitationId} onClose={()=>{setRecitationsOpen(false);setPendingRecitationId(null);}} />:
       utilityView?<ScrollView contentContainerStyle={{paddingHorizontal:18,paddingBottom:35}}><ProfileScreen mode={utilityView} state={state} update={update} account={account} onAuthenticated={activateAccount} onSignedOut={leaveAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>{setUtilityView(null);setTab('Amis');setSocialView('friends');}} openAdmin={()=>{setUtilityView(null);setSocialView('admin');}} openRecitations={()=>setRecitationsOpen(true)} admin={admin} passwordRecovery={passwordRecovery} setPasswordRecovery={setPasswordRecovery} onPasswordReady={()=>{if(!state.profile?.firstName)setWizard(-1);else if(!state.onboardingDone)setWizard(0);}} onReset={resetAll} /></ScrollView>:
       socialView==='friends'||tab==='Amis'?<FriendsScreen userId={state.userId??null} initialLinkId={pendingLinkId} initialCode={pendingInviteCode} shareText={`Mon objectif ${state.goal.label} est atteint à ${percent(prog.goal)}. Cette semaine, j’ai appris ${statsNow.week} versets.`} onUnreadChange={()=>unreadMessageCount().then(setUnreadCount).catch(()=>{})} onClose={()=>{setSocialView(null);setPendingLinkId(null);setPendingInviteCode(null);setTab('Accueil');}} />:
       socialView==='admin'?<AdminScreen onClose={()=>setSocialView(null)} />:
       reviewOpen&&reviewsEnabled(state)?<ReviewScreen state={state} openReader={openReader} openRecitations={()=>setRecitationsOpen(true)} onClose={()=>setReviewOpen(false)} startSession={only=>{setReviewOnly(only);const task=reviewPlan(state).session[0];if(task)openReader({range:task,reviewTask:task});else if(!only&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});}} />:
       <>
         <ScrollView key={tab} contentContainerStyle={{paddingHorizontal:18,paddingBottom:30}}>
-          {tab==='Accueil'&&<Home state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} openReviews={()=>setReviewOpen(true)} setTab={setTab} openSettings={()=>setUtilityView('settings')} unreadCount={unreadCount} openMessages={()=>{if(!account){setUtilityView('profile');setNotice('Connecte-toi pour accéder à tes messages.');return;}setPendingLinkId(null);setTab('Amis');setSocialView('friends');}} />}
+          {tab==='Accueil'&&<Home openDaily={()=>{setDailyId(undefined);setDailyOpen(true);}} state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} openReviews={()=>setReviewOpen(true)} setTab={setTab} openSettings={()=>setUtilityView('settings')} unreadCount={unreadCount} openMessages={()=>{if(!account){setUtilityView('profile');setNotice('Connecte-toi pour accéder à tes messages.');return;}setPendingLinkId(null);setTab('Amis');setSocialView('friends');}} />}
           {tab==='Coran'&&<QuranScreen openReader={openReader} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setWizard(1)} openReviews={()=>setReviewOpen(true)} />}
           {tab==='Progrès'&&<ProgressScreen state={state} prog={prog} stat={statsNow} allDone={allDone} />}
@@ -234,14 +238,14 @@ function AccountWelcome({onAuthenticated,onContinue}:{onAuthenticated:(user:{id:
   </ScrollView>;
 }
 
-function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader,openReviews,setTab,openSettings,unreadCount,openMessages}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void;openReviews:()=>void;setTab:(tab:Tab)=>void;openSettings:()=>void;unreadCount:number;openMessages:()=>void}){
+function Home({openDaily,state,prog,stat,todaySessions,due,finishEstimate,openReader,openReviews,setTab,openSettings,unreadCount,openMessages}:{state:AppState;prog:ReturnType<typeof progress>;stat:ReturnType<typeof stats>;todaySessions:Session[];due:AppState['revisions'];finishEstimate?:string;openReader:(r:Reader)=>void;openReviews:()=>void;setTab:(tab:Tab)=>void;openSettings:()=>void;unreadCount:number;openMessages:()=>void;openDaily:()=>void}){
   const theme=state.theme??'lilac';
   const last=state.lastRead;
   const lastVerse=last?.verseId??todaySessions[0]?.start??state.goal.ranges[0]?.start??1;
   const lastPage=last?.page??pageOf(lastVerse);
   const lastSurah=surahs[verseAt(lastVerse).surah-1];
   const resume=()=>openReader({range:{start:lastVerse,end:lastVerse}});
-  const shortcut=(label:string,glyph:string,onPress:()=>void)=><Pressable key={label} onPress={onPress} accessibilityLabel={label} style={{flex:1,alignItems:'center'}}><View style={{height:54,width:54,borderRadius:15,backgroundColor:colors.soft,borderWidth:1,borderColor:colors.softBorder,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:27,color:colors.green}}>{glyph}</Text></View><Label style={{fontSize:11,color:colors.text,marginTop:6}}>{label}</Label></Pressable>;
+  const shortcut=(label:string,glyph:string,onPress:()=>void)=><Pressable key={label} onPress={onPress} accessibilityLabel={label} style={{flex:1,alignItems:'center'}}><View style={{height:48,width:48,borderRadius:15,backgroundColor:colors.soft,borderWidth:1,borderColor:colors.softBorder,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:27,color:colors.green}}>{glyph}</Text></View><Label style={{fontSize:11,color:colors.text,marginTop:6,textAlign:'center'}}>{label}</Label></Pressable>;
   return <>
     <ImageBackground source={heroImages[theme]} resizeMode="cover" style={{height:260,marginHorizontal:-18,overflow:'hidden'}} imageStyle={{width:'100%',height:'100%'}}>
       <View style={{flexDirection:'row',alignItems:'center',paddingHorizontal:25,paddingTop:24}}><View style={{flex:1}}><Text style={{color:'white',fontSize:25,fontWeight:'800',textShadowColor:'#0006',textShadowRadius:4}}>Apprendre le Coran</Text><Text style={{color:'white',fontSize:13,marginTop:4,textShadowColor:'#0008',textShadowRadius:4}}>Bonjour{state.profile?.firstName?` ${state.profile.firstName}`:''}</Text></View><MessagingButton unreadCount={unreadCount} onPress={openMessages} /><Pressable accessibilityLabel="Ouvrir les réglages" onPress={openSettings} style={{padding:8}}><Text style={{fontSize:23,color:'white'}}>⚙</Text></Pressable></View>
@@ -255,12 +259,14 @@ function Home({state,prog,stat,todaySessions,due,finishEstimate,openReader,openR
       shortcut('Apprentissage','◇',()=>todaySessions[0]?openReader({range:todaySessions[0],sessionId:todaySessions[0].id}):setTab('Programme')),
       ...(reviewsEnabled(state)?[shortcut('Révisions','↻',openReviews)]:[]),
       shortcut('Traduction','文',()=>openReader({range:{start:lastVerse,end:lastVerse},initialLanguage:'fr'})),
+      shortcut('Rappels & Invocations','☾',openDaily),
     ]}</View>
+    <TodayContents theme={state.theme??'lilac'} userId={state.userId} />
     <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'baseline'}}>{section('Mes objectifs')}<Pressable onPress={()=>setTab('Programme')}><Label style={{fontSize:12,color:colors.green}}>Voir tout</Label></Pressable></View>
     <Card style={{flexDirection:'row',alignItems:'center',gap:14}}><View style={{width:48,height:48,borderRadius:24,alignItems:'center',justifyContent:'center',backgroundColor:colors.soft}}><Text style={{color:colors.green2,fontSize:28}}>◎</Text></View><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{state.goal.label}</Label><Label style={{fontSize:12,color:colors.muted,marginTop:3}}>{Math.round(prog.goal*100)} % de l’objectif · {Math.round(prog.quran*100)} % du Coran</Label><View style={{height:6,backgroundColor:colors.soft,borderRadius:6,marginTop:9}}><View style={{width:percent(prog.goal) as any,height:6,backgroundColor:colors.green2,borderRadius:6}} /></View></View></Card>
     <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'baseline'}}>{section('Dernières lectures')}<Pressable onPress={()=>setTab('Coran')}><Label style={{fontSize:12,color:colors.green}}>Voir tout</Label></Pressable></View>
     <Pressable onPress={resume}><Card style={{flexDirection:'row',alignItems:'center',gap:13}}><View style={{width:42,height:42,borderRadius:21,alignItems:'center',justifyContent:'center',backgroundColor:colors.surahBadge}}><Text style={{fontSize:23,color:colors.green}}>۞</Text></View><View style={{flex:1}}><Label style={{fontWeight:'700'}}>{lastSurah.name}</Label><Label style={{fontSize:12,color:colors.muted}}>Page {lastPage} · Verset {verseAt(lastVerse).ayah}</Label></View><View style={{width:32,height:32,borderRadius:16,backgroundColor:colors.green,alignItems:'center',justifyContent:'center'}}><Text style={{color:'white'}}>▶</Text></View></Card></Pressable>
-    {section('Aujourd’hui')}
+    {section('Mon apprentissage aujourd’hui')}
     <Card>{todaySessions.length?<><Label style={{color:colors.muted,fontSize:13}}>PROGRAMME D’APPRENTISSAGE</Label>{todaySessions.map(s=><View key={s.id} style={{marginTop:9}}><Label style={{fontWeight:'700'}}>{reference(s)}</Label><Label style={{color:colors.muted,fontSize:13}}>{paceLabels[s.unit]}</Label></View>)}</>:<Label style={{color:colors.muted}}>Aucune nouvelle séance prévue aujourd’hui.</Label>}</Card>
     <Button disabled={!todaySessions.length} onPress={()=>todaySessions[0]&&openReader({range:todaySessions[0],sessionId:todaySessions[0].id})}>COMMENCER MON APPRENTISSAGE</Button>
     {reviewsEnabled(state)&&<Button secondary onPress={openReviews}>MES RÉVISIONS</Button>}

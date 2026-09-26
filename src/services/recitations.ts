@@ -1,36 +1,39 @@
 import * as SQLite from 'expo-sqlite';
 import {Directory,File,Paths} from 'expo-file-system';
 import {supabase} from './sync';
+import type {DailyContent} from './dailyContents';
 import {verseAt} from '../core/quran';
 
-export type LocalRecitation={id:string;userId:string;start:number;end:number;durationMs:number;uri:string;createdAt:string;syncStatus:'pending'|'uploading'|'synced'|'failed'};
-export type RemoteRecitation={id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string;created_at:string;listened_at?:string|null;display_name?:string};
+export type LocalRecitation={id:string;userId:string;start:number;end:number;durationMs:number;uri:string;createdAt:string;recordingType?:'quran'|'invocation';invocation?:DailyContent;syncStatus:'pending'|'uploading'|'synced'|'failed'};
+export type RemoteRecitation={id:string;user_id:string;start_verse_id:number|null;end_verse_id:number|null;duration_ms:number;storage_path:string;created_at:string;listened_at?:string|null;display_name?:string;recording_type?:'quran'|'invocation';invocation_id?:string|null;invocation_snapshot?:DailyContent|null};
 export type VerseCorrection={id:string;recitation_id:string;verse_id:number;comment:string|null;voice_path:string|null;created_at:string;resolved_at:string|null};
 export type GeneralFeedback={id:string;recitation_id:string;comment:string|null;voice_path:string|null;created_at:string};
 
 const db=SQLite.openDatabaseSync('coran-memoire.db');
 db.execSync('CREATE TABLE IF NOT EXISTS local_recitations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, start_verse_id INTEGER NOT NULL, end_verse_id INTEGER NOT NULL, duration_ms INTEGER NOT NULL, uri TEXT NOT NULL, created_at TEXT NOT NULL, sync_status TEXT NOT NULL)');
+const columns=db.getAllSync<{name:string}>('PRAGMA table_info(local_recitations)');
+if(!columns.some(c=>c.name==='invocation_json'))db.execSync('ALTER TABLE local_recitations ADD COLUMN invocation_json TEXT');
 const folder=new Directory(Paths.document,'recitations');
 const validRange=(start:number,end:number)=>Number.isInteger(start)&&Number.isInteger(end)&&start>=1&&end<=6236&&start<=end;
 const uid=()=>`${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
 
 export function localRecitations(userId:string):LocalRecitation[]{
-  return db.getAllSync<{id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;uri:string;created_at:string;sync_status:LocalRecitation['syncStatus']}>('SELECT * FROM local_recitations WHERE user_id=? ORDER BY created_at DESC',userId).map(row=>({id:row.id,userId:row.user_id,start:row.start_verse_id,end:row.end_verse_id,durationMs:row.duration_ms,uri:row.uri,createdAt:row.created_at,syncStatus:row.sync_status}));
+  return db.getAllSync<{id:string;user_id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;uri:string;created_at:string;invocation_json:string|null;sync_status:LocalRecitation['syncStatus']}>('SELECT * FROM local_recitations WHERE user_id=? ORDER BY created_at DESC',userId).map(row=>({id:row.id,userId:row.user_id,start:row.start_verse_id,end:row.end_verse_id,durationMs:row.duration_ms,uri:row.uri,createdAt:row.created_at,syncStatus:row.sync_status,recordingType:row.invocation_json?'invocation':'quran',invocation:row.invocation_json?JSON.parse(row.invocation_json):undefined}));
 }
 
-export async function saveLocalRecitation(sourceUri:string,start:number,end:number,durationMs:number,userId:string):Promise<LocalRecitation>{
-  if(!validRange(start,end)||!userId||!sourceUri||durationMs<=0)throw new Error('Récitation ou passage invalide.');
+export async function saveLocalRecitation(sourceUri:string,start:number,end:number,durationMs:number,userId:string,invocation?:DailyContent):Promise<LocalRecitation>{
+  if((!invocation&&!validRange(start,end))||!userId||!sourceUri||durationMs<=0)throw new Error('Récitation ou passage invalide.');
   folder.create({idempotent:true,intermediates:true});
   const id=uid(),extension=sourceUri.toLowerCase().includes('.3gp')?'.3gp':'.m4a';
   const file=new File(folder,`${id}${extension}`);
   await new File(sourceUri).copy(file);
-  const item:LocalRecitation={id,userId,start,end,durationMs,uri:file.uri,createdAt:new Date().toISOString(),syncStatus:'pending'};
-  db.runSync('INSERT INTO local_recitations (id,user_id,start_verse_id,end_verse_id,duration_ms,uri,created_at,sync_status) VALUES (?,?,?,?,?,?,?,?)',id,userId,start,end,durationMs,item.uri,item.createdAt,'pending');
+  const item:LocalRecitation={id,userId,start,end,durationMs,uri:file.uri,createdAt:new Date().toISOString(),syncStatus:'pending',recordingType:invocation?'invocation':'quran',invocation};
+  db.runSync('INSERT INTO local_recitations (id,user_id,start_verse_id,end_verse_id,duration_ms,uri,created_at,sync_status,invocation_json) VALUES (?,?,?,?,?,?,?,?,?)',id,userId,start,end,durationMs,item.uri,item.createdAt,'pending',invocation?JSON.stringify(invocation):null);
   return item;
 }
 
 export function deleteLocalRecitation(item:LocalRecitation){
-  new File(item.uri).delete();
+  const file=new File(item.uri);if(file.exists)file.delete();
   db.runSync('DELETE FROM local_recitations WHERE id=? AND user_id=?',item.id,item.userId);
 }
 
@@ -51,10 +54,11 @@ export async function syncPendingRecitations():Promise<void>{
         const bytes=await file.bytes();
         const {error:uploadError}=await supabase.storage.from('recitations').upload(path,bytes,{contentType:path.endsWith('.3gp')?'audio/3gpp':'audio/mp4',upsert:false});
         if(uploadError&&!/already exists|duplicate/i.test(uploadError.message))throw uploadError;
-        const {error:rowError}=await supabase.from('recitations').upsert({id:item.id,user_id:userId,start_verse_id:item.start,end_verse_id:item.end,duration_ms:item.durationMs,storage_path:path,created_at:item.createdAt},{onConflict:'id',ignoreDuplicates:true});
+        const {error:rowError}=await supabase.from('recitations').upsert({id:item.id,user_id:userId,start_verse_id:item.invocation?null:item.start,end_verse_id:item.invocation?null:item.end,recording_type:item.invocation?'invocation':'quran',invocation_id:item.invocation?.id??null,invocation_snapshot:item.invocation??null,duration_ms:item.durationMs,storage_path:path,created_at:item.createdAt},{onConflict:'id',ignoreDuplicates:true});
         if(rowError)throw rowError;
         db.runSync('UPDATE local_recitations SET sync_status=? WHERE id=?','synced',item.id);
-      }catch{
+      }catch(error){
+        console.warn('[Recitations] Synchronisation impossible',error);
         db.runSync('UPDATE local_recitations SET sync_status=? WHERE id=?','failed',item.id);
       }
     }
@@ -65,7 +69,7 @@ export async function listRemoteRecitations(forAdmin=false):Promise<RemoteRecita
   if(!supabase)return [];
   const {data:{session}}=await supabase.auth.getSession();
   if(!session)return [];
-  let query=supabase.from('recitations').select('id,user_id,start_verse_id,end_verse_id,duration_ms,storage_path,created_at,listened_at').order('created_at',{ascending:false}).limit(forAdmin?200:100);
+  let query=supabase.from('recitations').select('id,user_id,start_verse_id,end_verse_id,duration_ms,storage_path,created_at,listened_at,recording_type,invocation_id,invocation_snapshot').order('created_at',{ascending:false}).limit(forAdmin?200:100);
   if(!forAdmin)query=query.eq('user_id',session.user.id);
   const {data,error}=await query;
   if(error)throw error;
@@ -143,8 +147,10 @@ export async function publishCorrections(recitation:RemoteRecitation,items:{vers
   if(!items.length)throw new Error('Sélectionne au moins un verset.');
   const {data:{user}}=await supabase.auth.getUser();
   if(!user)throw new Error('Connecte-toi.');
+  if(recitation.start_verse_id===null||recitation.end_verse_id===null)throw new Error('Cette prononciation ne contient pas de versets du Coran.');
+  const start=recitation.start_verse_id,end=recitation.end_verse_id;
   const rows=items.map(item=>{
-    if(item.verseId<recitation.start_verse_id||item.verseId>recitation.end_verse_id||!verseAt(item.verseId))throw new Error('Verset hors de la récitation.');
+    if(item.verseId<start||item.verseId>end||!verseAt(item.verseId))throw new Error('Verset hors de la récitation.');
     return {recitation_id:recitation.id,verse_id:item.verseId,comment:item.comment.trim()||null,voice_path:item.voicePath??null,admin_id:user.id};
   });
   const {error}=await supabase.from('recitation_corrections').insert(rows);
@@ -153,6 +159,7 @@ export async function publishCorrections(recitation:RemoteRecitation,items:{vers
 
 export async function finalizeRecitationCorrection(recitation:RemoteRecitation,requestId:string,items:{verseId:number;comment:string}[],generalComment:string,voicePath:string|null):Promise<void>{
   if(!supabase)throw new Error('Compte indisponible.');
+  if(recitation.start_verse_id===null||recitation.end_verse_id===null)throw new Error('Cette prononciation ne contient pas de versets du Coran.');
   for(const item of items)if(item.verseId<recitation.start_verse_id||item.verseId>recitation.end_verse_id||!verseAt(item.verseId))throw new Error('Verset hors de la récitation.');
   const {error}=await supabase.rpc('finalize_recitation_correction',{
     p_recitation_id:recitation.id,p_request_id:requestId,p_verses:items,
