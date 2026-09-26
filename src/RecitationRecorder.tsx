@@ -14,7 +14,7 @@ const recordingOptions={...RecordingPresets.HIGH_QUALITY,numberOfChannels:1,bitR
 const duration=(ms:number)=>`${Math.floor(ms/60000).toString().padStart(2,'0')}:${Math.floor(ms/1000%60).toString().padStart(2,'0')}`;
 const localUserId=async()=>{const {data:{session}}=await supabase!.auth.getSession();return session?.user.id;};
 
-export function RecitationRecorder({range,invocation,onSaved,onShare}:{range?:Range;invocation?:DailyContent;onSaved?:(item:LocalRecitation)=>void;onShare?:(item:LocalRecitation)=>void}){
+export function RecitationRecorder({range,invocation,onSaved,onShare,onRecordingChange}:{range?:Range;invocation?:DailyContent;onSaved?:(item:LocalRecitation)=>void;onRecordingChange?:(active:boolean)=>void;onShare?:(item:LocalRecitation)=>void}){
   const recorder=useAudioRecorder(recordingOptions);
   const recorderState=useAudioRecorderState(recorder,250);
   const [phase,setPhase]=useState<'idle'|'recording'|'paused'|'preview'|'saved'>('idle');
@@ -23,7 +23,8 @@ export function RecitationRecorder({range,invocation,onSaved,onShare}:{range?:Ra
   const [message,setMessage]=useState('');
   const [busy,setBusy]=useState(false);
   const player=useRef<ReturnType<typeof createAudioPlayer>|null>(null);
-  useEffect(()=>()=>{player.current?.release();},[]);
+  useEffect(()=>{onRecordingChange?.(phase==='recording'||phase==='paused');},[phase,onRecordingChange]);
+  useEffect(()=>()=>{player.current?.release();onRecordingChange?.(false);},[onRecordingChange]);
 
   const begin=async()=>{
     setBusy(true);
