@@ -18,6 +18,7 @@ let correctionsEnabled=true;
 let adminMessagesEnabled=true;
 let registeredToken:string|null=null;
 let installationId:string|null=null;
+let registrationTask:Promise<string|undefined>|null=null;
 let scheduleQueue=Promise.resolve();
 const displayedMessages=new Set<string>();
 
@@ -54,8 +55,9 @@ export async function configureNotificationChannels(){
 export async function ensureNotificationPermission(prompt=false){
   await configureNotificationChannels();
   let result=await Notifications.getPermissionsAsync();
-  if(prompt&&!result.granted&&result.ios?.status!==Notifications.IosAuthorizationStatus.PROVISIONAL)result=await Notifications.requestPermissionsAsync();
-  return result.granted||result.ios?.status===Notifications.IosAuthorizationStatus.PROVISIONAL;
+  if(prompt&&!result.granted&&!([Notifications.IosAuthorizationStatus.PROVISIONAL,Notifications.IosAuthorizationStatus.EPHEMERAL] as number[]).includes(result.ios?.status??-1))result=await Notifications.requestPermissionsAsync();
+  if(__DEV__)console.log('[Push] permission',Platform.OS,result.status,result.ios?.status??'');
+  return result.granted||result.ios?.status===Notifications.IosAuthorizationStatus.PROVISIONAL||result.ios?.status===Notifications.IosAuthorizationStatus.EPHEMERAL;
 }
 
 export function cancelAutomaticReminders():Promise<void>{
@@ -68,7 +70,7 @@ export function cancelAutomaticReminders():Promise<void>{
   return next;
 }
 
-export async function registerPushDevice(){
+async function registerPushDeviceNow(){
   if(!supabase)throw new Error('Synchronisation non configurée.');
   const user=await currentUser();if(!user)return;
   if(!await ensureNotificationPermission())throw new Error('Autorise les notifications dans les réglages du téléphone.');
@@ -77,10 +79,21 @@ export async function registerPushDevice(){
   const token=(await Notifications.getExpoPushTokenAsync({projectId})).data;
   installationId=installationId??await AsyncStorage.getItem('notification-installation-id');
   if(!installationId){installationId=`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;await AsyncStorage.setItem('notification-installation-id',installationId);}
-  const {error}=await supabase.from('push_devices').upsert({installation_id:installationId,user_id:user.id,expo_push_token:token,platform:Platform.OS,updated_at:new Date().toISOString()},{onConflict:'installation_id'});
+  if(__DEV__)console.log('[Push] local token',{platform:Platform.OS,userId:user.id,projectId,token});
+  const {error}=await supabase.rpc('register_push_device',{p_installation_id:installationId,p_expo_push_token:token,p_platform:Platform.OS});
   if(error)throw error;
+  const {data:stored,error:readError}=await supabase.from('push_devices').select('user_id,expo_push_token,platform,updated_at').eq('installation_id',installationId).maybeSingle();
+  if(readError)throw readError;
+  if(stored?.user_id!==user.id||stored.expo_push_token!==token||stored.platform!==Platform.OS)throw new Error('Jeton push non associé à ce compte.');
+  if(__DEV__)console.log('[Push] Supabase confirmed',{platform:stored.platform,userId:stored.user_id,updatedAt:stored.updated_at});
   registeredToken=token;
   return token;
+}
+
+export function registerPushDevice(){
+  if(registrationTask)return registrationTask;
+  registrationTask=registerPushDeviceNow().finally(()=>{registrationTask=null;});
+  return registrationTask;
 }
 
 export async function updatePushPresence(linkId:string|null){

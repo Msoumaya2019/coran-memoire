@@ -20,7 +20,7 @@ export function PassageAudioPlayer({sessionRange,page,command,onVerseChange,full
   const setDock=(next:Dock)=>{LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);setDockState(next);};
   useEffect(()=>{if(command)setDock('expanded');},[command?.serial]);
   useEffect(()=>{if(fullscreen&&dock!=='hidden')setDock('hidden');},[fullscreen]);
-  return <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{backgroundColor:colors.paper,borderTopWidth:dock==='closed'?0:1,borderColor:colors.line,paddingHorizontal:12,paddingBottom:6,maxHeight:dock==='expanded'?'70%':undefined}}>
+  return <KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':undefined} style={{backgroundColor:fullscreen?colors.cream:colors.paper,borderTopWidth:fullscreen||dock==='closed'?0:1,borderColor:colors.line,paddingHorizontal:fullscreen?0:12,paddingBottom:fullscreen?0:6,maxHeight:dock==='expanded'?'70%':undefined,...(fullscreen?{position:'absolute' as const,right:12,bottom:10,zIndex:6}:{})}}>
     {dock==='closed'&&!hideLaunch&&<Button onPress={()=>setDock('expanded')}>▶ Écouter mon passage par un récitateur</Button>}
     <PassageAudioControls sessionRange={sessionRange} page={page} command={command} onVerseChange={onVerseChange} dock={dock} setDock={setDock} />
   </KeyboardAvoidingView>;

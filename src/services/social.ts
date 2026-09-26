@@ -2,9 +2,9 @@ import { AppState, progress, stats, todayLocal } from '../core/program';
 import { currentUser, supabase } from './sync';
 
 export type FriendProfile={id:string;display_name:string;invite_code:string;share_online:boolean;share_location:boolean;share_progress:boolean;avatar_path?:string|null};
-export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:FriendProfile};
+export type FriendLink={id:string;requester_id:string;recipient_id:string;status:'pending'|'accepted'|'blocked';blocked_by:string|null;created_at:string;other?:Pick<FriendProfile,'id'|'display_name'|'avatar_path'|'share_online'>};
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
-export type FriendGroup={id:string;name:string;owner_id:string;created_at:string};
+export type FriendGroup={id:string;name:string;owner_id:string;created_at:string;contact_user_id?:string|null};
 export type GroupMember={group_id:string;user_id:string;role:'owner'|'moderator'|'member';accepted_at:string|null;invited_by:string|null;profile?:FriendProfile};
 export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress'|'recitation';body:string;recitation_id:string|null;recitation?:{id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string};created_at:string;deleted_at:string|null};
 export type MessageReport={id:string;message_id:string;reason:string;reporter_id:string;excerpt:string;status:'open'|'reviewed';created_at:string};
@@ -25,16 +25,71 @@ export async function updateSocialProfile(values:Pick<FriendProfile,'display_nam
   const user=await currentUser();if(!user)throw new Error('Connexion requise');
   checked(await client().from('friend_profiles').update({display_name:values.display_name,share_online:values.share_online,share_location:values.share_location,share_progress:values.share_progress}).eq('id',user.id));
 }
-export async function listFriendLinks():Promise<FriendLink[]>{
-  const user=await currentUser();if(!user)return [];
-  const links=checked(await client().from('friend_links').select('*').order('created_at',{ascending:false})) as FriendLink[];
-  const ids=links.map(link=>link.requester_id===user.id?link.recipient_id:link.requester_id);
+export async function listFriendLinks(userId?:string):Promise<FriendLink[]>{
+  const id=userId??(await currentUser())?.id;if(!id)return [];
+  const links=checked(await client().from('friend_links').select('id,requester_id,recipient_id,status,blocked_by,created_at').order('created_at',{ascending:false})) as FriendLink[];
+  const ids=links.map(link=>link.requester_id===id?link.recipient_id:link.requester_id);
   if(!ids.length)return links;
-  const profiles=checked(await client().from('friend_profiles').select('*').in('id',ids)) as FriendProfile[];
+  const profiles=checked(await client().from('friend_profiles').select('id,display_name,avatar_path,share_online').in('id',ids)) as Pick<FriendProfile,'id'|'display_name'|'avatar_path'|'share_online'>[];
   const byId=new Map(profiles.map(p=>[p.id,p]));
-  return links.map(link=>({...link,other:byId.get(link.requester_id===user.id?link.recipient_id:link.requester_id)}));
+  return links.map(link=>({...link,other:byId.get(link.requester_id===id?link.recipient_id:link.requester_id)}));
+}
+export type FriendsSnapshot={userId:string;profile:FriendProfile;links:FriendLink[];groups:FriendGroup[];suspension:SocialSuspension|null};
+let friendsSnapshot:FriendsSnapshot|null=null;
+let friendsRequest:Promise<FriendsSnapshot>|null=null;
+let friendsRequestUser:string|null=null;
+let friendsGeneration=0;
+export type FriendInbox={summaries:Record<string,{body:string;createdAt:string;unread:number}>;statuses:Record<string,boolean>};
+let inboxCache:{userId:string;data:FriendInbox}|null=null;
+export function cachedFriendsSnapshot(userId:string|null){return userId&&friendsSnapshot?.userId===userId?friendsSnapshot:null;}
+export function cachedFriendInbox(userId:string|null){return userId&&inboxCache?.userId===userId?inboxCache.data:null;}
+export function clearFriendsSnapshot(){friendsGeneration++;friendsSnapshot=null;friendsRequest=null;friendsRequestUser=null;inboxCache=null;}
+export async function loadFriendsSnapshot(userId:string):Promise<FriendsSnapshot>{
+  if(friendsRequest&&friendsRequestUser===userId)return friendsRequest;
+  const generation=friendsGeneration;
+  const request=Promise.all([ensureSocialProfile(),listFriendLinks(userId)]).then(([profile,links])=>{
+    const result={userId,profile,links,groups:cachedFriendsSnapshot(userId)?.groups??[],suspension:cachedFriendsSnapshot(userId)?.suspension??null};
+    if(generation===friendsGeneration)friendsSnapshot=result;return result;
+  }).finally(()=>{if(friendsRequest===request){friendsRequest=null;friendsRequestUser=null;}});
+  friendsRequest=request;friendsRequestUser=userId;return request;
+}
+export async function loadFriendExtras(userId:string){
+  const [groups,suspension]=await Promise.all([listGroups(),mySocialSuspension(userId)]);
+  if(friendsSnapshot?.userId===userId)friendsSnapshot={...friendsSnapshot,groups,suspension};
+  return {groups,suspension};
+}
+export function prefetchFriendsSnapshot(userId:string){
+  if(cachedFriendsSnapshot(userId))return;
+  loadFriendsSnapshot(userId).then(snapshot=>{
+    loadFriendInbox(userId,snapshot.links).catch(error=>{if(__DEV__)console.warn('[Friends Perf] inbox prefetch failed',error);});
+    loadFriendExtras(userId).catch(error=>{if(__DEV__)console.warn('[Friends Perf] extras prefetch failed',error);});
+  }).catch(error=>{if(__DEV__)console.warn('[Friends Perf] prefetch failed',error);});
+}
+export async function loadFriendInbox(userId:string,links:FriendLink[]):Promise<FriendInbox>{
+  const accepted=links.filter(link=>link.status==='accepted');
+  if(!accepted.length){const data={summaries:{},statuses:{}};inboxCache={userId,data};return data;}
+  const {data:rows,error}=await client().rpc('friend_inbox');
+  if(error){
+    if(error.code!=='PGRST202')throw error;
+    // Older Supabase deployments keep working until friend-inbox.sql is applied.
+    const summaries=await conversationSummaries(accepted.map(link=>link.id));
+    const statuses=Object.fromEntries(await Promise.all(accepted.map(async link=>{
+      const other=link.requester_id===userId?link.recipient_id:link.requester_id;
+      try{return [other,(await friendOverview(other)).is_online] as const;}
+      catch{return [other,false] as const;}
+    })));
+    const data={summaries,statuses};inboxCache={userId,data};return data;
+  }
+  const summaries:FriendInbox['summaries']={};const statuses:FriendInbox['statuses']={};
+  for(const row of rows as {link_id:string;body:string|null;created_at:string|null;unread_count:number;other_id:string;is_online:boolean}[]){
+    statuses[row.other_id]=row.is_online;
+    if(row.created_at||row.unread_count>0)summaries[row.link_id]={body:row.body??'Nouveau message',createdAt:row.created_at??new Date().toISOString(),unread:Number(row.unread_count)};
+  }
+  const data={summaries,statuses};inboxCache={userId,data};return data;
 }
 export async function sendFriendRequest(code:string){await rpc('request_friend',{p_code:code});}
+export type ContactAdmin={id:string;display_name:string};
+export async function openAdminContact():Promise<string>{return await rpc('open_admin_contact') as string;}
 export async function acceptFriend(id:string){await rpc('accept_friend',{p_link:id});}
 export async function declineFriend(id:string){await rpc('decline_friend',{p_link:id});}
 export async function removeFriend(id:string){await rpc('remove_friend',{p_link:id});}
@@ -153,9 +208,9 @@ export async function isSocialAdmin():Promise<boolean>{
   const user=await currentUser();if(!user)return false;
   return !!checked(await client().from('app_admins').select('user_id').eq('user_id',user.id).maybeSingle());
 }
-export async function mySocialSuspension():Promise<SocialSuspension|null>{
-  const user=await currentUser();if(!user)return null;
-  return checked(await client().from('social_suspensions').select('*').eq('user_id',user.id).maybeSingle()) as SocialSuspension|null;
+export async function mySocialSuspension(userId?:string):Promise<SocialSuspension|null>{
+  const id=userId??(await currentUser())?.id;if(!id)return null;
+  return checked(await client().from('social_suspensions').select('user_id,reason,suspended_until,created_at').eq('user_id',id).maybeSingle()) as SocialSuspension|null;
 }
 export async function listAdminReports():Promise<MessageReport[]>{
   return checked(await client().from('friend_message_reports').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100)) as MessageReport[];
