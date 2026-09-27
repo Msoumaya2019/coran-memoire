@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const core=require('./build/core/audio.js'),quran=require('./build/core/quran.js');
-function controls(){
+function controls(mode='passage'){
  const effects=[],changes=[],calls={replace:0,play:0,pause:0,seek:[],release:0};let listener;
  const player={replace(){calls.replace++;},play(){calls.play++;},pause(){calls.pause++;},seekTo(...args){calls.seek.push(args);return Promise.resolve();},setPlaybackRate(){},setActiveForLockScreen(){},addListener(_,fn){listener=fn;return {remove(){listener=null;}};},release(){calls.release++;}};
- const React={createElement:(type,props,...children)=>({type,props:props||{},children}),Fragment:'fragment',useState:initial=>[typeof initial==='function'?initial():initial,()=>{}],useRef:initial=>({current:initial}),useEffect:fn=>effects.push(fn),useMemo:fn=>fn()};
+ const React={createElement:(type,props,...children)=>({type,props:props||{},children}),Fragment:'fragment',useState:initial=>[initial==='passage'?mode:typeof initial==='function'?initial():initial,()=>{}],useRef:initial=>({current:initial}),useEffect:fn=>effects.push(fn),useMemo:fn=>fn()};
  const ui=Object.fromEntries(['Button','Choice','Field','Label'].map(name=>[name,name]));ui.colors={};
  const native=Object.fromEntries(['KeyboardAvoidingView','Pressable','ScrollView','Text','View'].map(name=>[name,name]));native.Platform={OS:'ios'};native.PanResponder={create:()=>({panHandlers:{}})};native.LayoutAnimation={configureNext(){},Presets:{easeInEaseOut:{}}};
  const exports={};const code=ts.transpileModule(fs.readFileSync('src/PassageAudioPlayer.tsx','utf8')+'\nexport {PassageAudioControls};',{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
@@ -28,4 +28,17 @@ test('le lecteur conserve un seul fichier entre les ayat et seek uniquement aux 
  assert.deepEqual(c.changes.filter(id=>id!==null),[5,6,7,8,5,6,7,8,5,6,7,8]);
  assert.equal(c.calls.play,3);assert.equal(c.calls.seek.length,3);assert.ok(c.calls.seek.every(args=>args[0]===10&&args[1]===0&&args[2]===0));
  c.close();await settle();assert.equal(c.calls.release,1);
+});
+
+test('répéter chaque ayah conserve aussi une transition continue vers l’ayah suivante',async()=>{
+ const c=controls('each-verse');c.begin();await settle();
+ for(let id=5;id<=8;id++){
+  const start=id+5,end=start+1;
+  for(let repetition=1;repetition<=3;repetition++){
+   c.emit(start);const plays=c.calls.play,pauses=c.calls.pause;c.emit(end);await settle();
+   if(repetition===3&&id<8){assert.equal(c.calls.play,plays);assert.equal(c.calls.pause,pauses);}
+  }
+ }
+ assert.deepEqual(c.changes.filter(id=>id!==null),[5,5,5,6,6,6,7,7,7,8,8,8]);
+ assert.equal(c.calls.replace,1);assert.equal(c.calls.play,9);assert.equal(c.calls.seek.length,9);c.close();
 });

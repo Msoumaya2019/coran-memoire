@@ -111,10 +111,10 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
       const segmentFinished=segmentEndRef.current!==null&&status.isLoaded&&status.playing&&status.currentTime>=segmentEndRef.current;
       if(!(status.didJustFinish||segmentFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
       const position=positionRef.current;
-      if(timelineRef.current&&settingsRef.current.mode==='passage'&&position.verseId<rangeRef.current.end){
+      if(timelineRef.current&&(settingsRef.current.mode==='passage'||position.repetition>=Number(settingsRef.current.count))&&position.verseId<rangeRef.current.end){
         const nextTiming=timelineRef.current.verses[position.verseId+1];
         if(nextTiming&&!status.didJustFinish){
-          const next=continuousAudioPosition(timelineRef.current,rangeRef.current,position,status.currentTime);if(next.verseId===position.verseId)return;positionRef.current=next;segmentEndRef.current=timelineRef.current.verses[next.verseId].end;setCurrent(next);onVerseChangeRef.current?.(next.verseId);return;
+          const next=settingsRef.current.mode==='passage'?continuousAudioPosition(timelineRef.current,rangeRef.current,position,status.currentTime):{verseId:position.verseId+1,repetition:1};if(next.verseId===position.verseId)return;positionRef.current=next;segmentEndRef.current=timelineRef.current.verses[next.verseId].end;setCurrent(next);onVerseChangeRef.current?.(next.verseId);return;
         }
       }
       finishGuard.current=true;
