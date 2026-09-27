@@ -6,6 +6,7 @@ export const reciters = [
   {id:'ar.minshawi',name:'Mohammed Siddiq Al-Minshawi',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
 ] as const;
+export const defaultReciter=reciters[1];
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';
@@ -29,7 +30,7 @@ export function continuousAudioPosition(timeline:ChapterAudio,range:Range,positi
   return {...position,verseId:id};
 }
 
-export function verseAudioUrl(id:number,reciter:Reciter=reciters[0]):string{
+export function verseAudioUrl(id:number,reciter:Reciter=defaultReciter):string{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset audio invalide.');
   return `https://cdn.islamic.network/quran/audio/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
 }
