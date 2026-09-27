@@ -7,7 +7,7 @@ export const reciters = [
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
 ] as const;
 export const defaultReciter=reciters[3];
-export const DEFAULT_AYAH_GAP_MS=400;
+export const DEFAULT_AYAH_GAP_MS=350;
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';

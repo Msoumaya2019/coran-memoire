@@ -33,7 +33,7 @@ export function PassageAudioPlayer({userId,reciterPreference,onReciterPreference
 
 function PassageAudioControls({userId,reciterPreference,onReciterPreference,sessionRange,page,command,onVerseChange,dock,setDock,compact,maxPanelHeight,sessionMode,onAdvancedChange}:ControlsProps){
   // Own the player so cleanup runs before release when the reader closes.
-  const [player]=useState(()=>createAudioPlayer(null,{updateInterval:100,keepAudioSessionActive:true}));
+  const [player]=useState(()=>createAudioPlayer(null,{updateInterval:20,keepAudioSessionActive:true}));
   const onVerseChangeRef=useRef(onVerseChange);
   onVerseChangeRef.current=onVerseChange;
   const [selection,setSelection]=useState<Selection>('session');
@@ -58,6 +58,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   const settingsRef=useRef({count:3 as RepeatCount,mode:'passage' as RepeatMode,gap:0,autoStop:true,speed:1});
   const finishGuard=useRef(false),isPlayingRef=useRef(false),completedRef=useRef(false);
   const requestRef=useRef(0),mountedRef=useRef(true),sourceRef=useRef<string|null>(null),segmentEndRef=useRef<number|null>(null),pendingSeeks=useRef<Set<Promise<void>>>(new Set());
+  const boundaryTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null),finishBoundaryRef=useRef<()=>void>(()=>{});
   const pendingContinuationRef=useRef(false);
   const timelineRef=useRef<ChapterAudio|null>(null);
   const pendingWaitRef=useRef(0),gapDeadlineRef=useRef(0);
@@ -74,11 +75,28 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   const count:RepeatCount=countChoice==='custom'?Number(customCount):countChoice;
   settingsRef.current={count:count==='continuous'?count:Number.isInteger(count)&&count>0?count:1,mode:repeatMode,gap,autoStop,speed};
 
+  const clearBoundary=()=>{if(boundaryTimerRef.current){clearTimeout(boundaryTimerRef.current);boundaryTimerRef.current=null;}};
+  const armBoundary=()=>{
+    clearBoundary();
+    const end=segmentEndRef.current,session=requestRef.current;
+    if(end===null||!isPlayingRef.current||finishGuard.current||!mountedRef.current)return;
+    // Read the native clock, not the delayed status event's position.
+    const remaining=(end-player.currentTime)*1000/settingsRef.current.speed;
+    if(!Number.isFinite(remaining))return;
+    if(remaining<=0){finishBoundaryRef.current();return;}
+    boundaryTimerRef.current=setTimeout(()=>{
+      boundaryTimerRef.current=null;
+      if(!mountedRef.current||session!==requestRef.current||!isPlayingRef.current||finishGuard.current)return;
+      // A buffering stall may have stopped the native clock before the deadline.
+      if(player.currentTime<end){armBoundary();return;}
+      finishBoundaryRef.current();
+    },Math.max(1,Math.ceil(remaining)));
+  };
   const clearPause=()=>{if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}};
   const scheduleNext=(next:AudioPosition,wait:number)=>{const continuation=pendingContinuationRef.current;const session=requestRef.current;pendingWaitRef.current=wait;gapDeadlineRef.current=Date.now()+wait;timerRef.current=setTimeout(()=>{timerRef.current=null;if(mountedRef.current&&session===requestRef.current){if(continuation)resumeContinuous(next);else startAt(next);}},wait);};
   const clearCollapse=()=>{if(collapseRef.current){clearTimeout(collapseRef.current);collapseRef.current=null;}};
   const collapseSoon=()=>{if(compact||collapseRef.current)return;collapseRef.current=setTimeout(()=>{collapseRef.current=null;setDock('mini');},3500);};
-  const stop=()=>{requestRef.current++;clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
+  const stop=()=>{requestRef.current++;clearBoundary();clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
   const selectionRange=():Range=>{
     if(selection==='page'||selection==='surah')return selection==='page'?pageRange(page):selectedRange;
     if(selection==='session')return selectedRange;
@@ -88,7 +106,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
     return audioRange(start,end);
   };
   const resumeContinuous=(position:AudioPosition)=>{
-    const session=++requestRef.current;pendingRef.current=null;pendingContinuationRef.current=false;
+    const session=++requestRef.current;clearBoundary();pendingRef.current=null;pendingContinuationRef.current=false;
     positionRef.current=position;segmentEndRef.current=timelineRef.current?.verses[position.verseId]?.end??null;finishGuard.current=true;
     setCurrent(position);onVerseChangeRef.current?.(position.verseId);
     transitionQueue.current=transitionQueue.current.then(async()=>{
@@ -100,7 +118,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   };
   const startAt=(position:AudioPosition)=>{
     const request=++requestRef.current;
-    clearPause();pendingRef.current=null;pendingContinuationRef.current=false;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current)player.pause();positionRef.current=position;setCurrent(position);setProgress({time:0,duration:0});setPlaying(true);setLoading(true);setError('');finishGuard.current=true;
+    clearBoundary();clearPause();pendingRef.current=null;pendingContinuationRef.current=false;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current)player.pause();positionRef.current=position;setCurrent(position);setProgress({time:0,duration:0});setPlaying(true);setLoading(true);setError('');finishGuard.current=true;
     debug('START');
     const selectedReciter=reciterRef.current;
     const task=transitionQueue.current.then(async()=>{
@@ -150,18 +168,9 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   useEffect(()=>{if(preferencesLoaded)AsyncStorage.setItem('audio-repeat-preferences',JSON.stringify({countChoice,customCount,repeatMode,gap,speed,autoStop})).catch(()=>{});},[preferencesLoaded,countChoice,customCount,repeatMode,gap,speed,autoStop]);
   useEffect(()=>{
     setAudioModeAsync({playsInSilentMode:true,shouldPlayInBackground:true,interruptionMode:'doNotMix'}).catch(e=>setError(String(e)));
-    const subscription=player.addListener('playbackStatusUpdate',status=>{
-      if(transitioningRef.current||armedRequestRef.current!==requestRef.current)return;
-      lastStatusRef.current={isLoaded:status.isLoaded,playing:status.playing,currentTime:status.currentTime,duration:status.duration};
-      if(status.error){isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
-      if(status.isLoaded&&Date.now()-progressAt.current>250){progressAt.current=Date.now();setProgress({time:status.currentTime,duration:status.duration});}
-      if(finishGuard.current&&status.isLoaded&&status.playing&&!status.didJustFinish&&status.currentTime<status.duration)finishGuard.current=false;
-      const timeline=timelineRef.current;
-      // Some native file endings report the final position without didJustFinish.
-      // Buffering or a manual pause must never advance the selected passage.
-      const fileFinished=status.isLoaded&&!status.isBuffering&&status.duration>0&&status.currentTime>=status.duration;
-      const segmentFinished=segmentEndRef.current!==null&&status.isLoaded&&status.playing&&status.currentTime>=segmentEndRef.current;
-      if(!(status.didJustFinish||segmentFinished||fileFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
+    finishBoundaryRef.current=()=>{
+      if(finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
+      const timeline=timelineRef.current;clearBoundary();
       debug('FINISHED');
       finishGuard.current=true;
       const next=nextAudioPosition(rangeRef.current,positionRef.current,settingsRef.current.mode,settingsRef.current.count,settingsRef.current.autoStop);
@@ -171,15 +180,29 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       const wait=Math.max(DEFAULT_AYAH_GAP_MS,restart||repeatedVerse?settingsRef.current.gap*1000:0);
       pendingContinuationRef.current=!!timeline&&next.verseId===positionRef.current!.verseId+1&&!!timeline.verses[next.verseId];
       debug('NEXT',{nextAyah:next.verseId,nextRepeat:next.repetition,wait});player.pause();isPlayingRef.current=false;pendingRef.current=next;if(wait>0)scheduleNext(next,wait);else startAt(next);
+    };
+    const subscription=player.addListener('playbackStatusUpdate',status=>{
+      if(transitioningRef.current||armedRequestRef.current!==requestRef.current)return;
+      lastStatusRef.current={isLoaded:status.isLoaded,playing:status.playing,currentTime:status.currentTime,duration:status.duration};
+      if(status.error){isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
+      if(status.isLoaded&&Date.now()-progressAt.current>250){progressAt.current=Date.now();setProgress({time:status.currentTime,duration:status.duration});}
+      if(finishGuard.current&&status.isLoaded&&status.playing&&!status.didJustFinish&&status.currentTime<status.duration)finishGuard.current=false;
+      if(status.isLoaded&&status.playing&&!status.isBuffering)armBoundary();else clearBoundary();
+      // Some native file endings report the final position without didJustFinish.
+      // Buffering or a manual pause must never advance the selected passage.
+      const fileFinished=status.isLoaded&&!status.isBuffering&&status.duration>0&&status.currentTime>=status.duration;
+      const segmentFinished=segmentEndRef.current!==null&&status.isLoaded&&status.playing&&status.currentTime>=segmentEndRef.current;
+      if(!(status.didJustFinish||segmentFinished||fileFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
+      finishBoundaryRef.current();
     });
-    return()=>{for(const url of preloaded.current)clearPreloadedSource(url);preloaded.current.clear();mountedRef.current=false;requestRef.current++;subscription.remove();clearPause();clearCollapse();isPlayingRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}transitionQueue.current.finally(()=>player.release()).catch(e=>console.error('[AUDIO ERROR] release',e));};
+    return()=>{for(const url of preloaded.current)clearPreloadedSource(url);preloaded.current.clear();mountedRef.current=false;requestRef.current++;subscription.remove();clearBoundary();clearPause();clearCollapse();isPlayingRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}transitionQueue.current.finally(()=>player.release()).catch(e=>console.error('[AUDIO ERROR] release',e));};
   },[player]);
   useEffect(()=>{stop();rangeRef.current=sessionRange;setSelectedRange(sessionRange);setSelection(sessionMode===false?'page':'session');setChosenId(sessionRange.start);setSurahText(String(verseAt(sessionRange.start).surah));setFirstText(String(verseAt(sessionRange.start).ayah));setLastText(String(verseAt(sessionRange.end).surah===verseAt(sessionRange.start).surah?verseAt(sessionRange.end).ayah:verseAt(sessionRange.start).ayah));},[sessionRange.start,sessionRange.end]);
-  useEffect(()=>{if(positionRef.current){const session=requestRef.current;transitionQueue.current=transitionQueue.current.then(async()=>{if(mountedRef.current&&session===requestRef.current)await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(speed));}).catch(e=>{setError(e instanceof Error?e.message:String(e));});}},[speed]);
+  useEffect(()=>{if(positionRef.current){const session=requestRef.current;transitionQueue.current=transitionQueue.current.then(async()=>{if(mountedRef.current&&session===requestRef.current){await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(speed));armBoundary();}}).catch(e=>{setError(e instanceof Error?e.message:String(e));});}},[speed]);
   useEffect(()=>{if(!command)return;setChosenId(command.id);if(command.action==='open')return;const verse=verseAt(command.id);setChosenId(command.id);setSelectedRange({start:command.id,end:command.id});setSurahText(String(verse.surah));setFirstText(String(verse.ayah));setLastText(String(verse.ayah));setSelection(command.action==='select'?'custom':'verse');if(command.action==='listen'){setCountChoice(1);settingsRef.current={...settingsRef.current,count:1,mode:'passage',autoStop:true};rangeRef.current={start:command.id,end:command.id};startAt({verseId:command.id,repetition:1});}else if(command.action==='repeat')setRepeatMode('passage');},[command?.serial]);
   const jump=(direction:-1|1)=>{const position=positionRef.current;if(!position)return;const id=Math.max(rangeRef.current.start,Math.min(rangeRef.current.end,position.verseId+direction));startAt({verseId:id,repetition:1});};
   const drag=useMemo(()=>PanResponder.create({onMoveShouldSetPanResponder:(_,gesture)=>Math.abs(gesture.dy)>12&&Math.abs(gesture.dy)>Math.abs(gesture.dx)*1.4,onPanResponderRelease:(_,gesture)=>{if(gesture.dy>40)setDock(dock==='expanded'?'mini':'hidden');else if(gesture.dy< -40)setDock('expanded');}}),[dock]);
-  const playPause=()=>{if(loading||transitioningRef.current){requestRef.current++;clearPause();pendingRef.current=positionRef.current;pendingWaitRef.current=0;player.pause();isPlayingRef.current=false;setPlaying(false);setLoading(false);return;}if(positionRef.current&&!isPlayingRef.current&&!timerRef.current){if(pendingRef.current){scheduleNext(pendingRef.current,pendingWaitRef.current);setPlaying(true);}else if(completedRef.current)begin();else{clearPause();player.play();isPlayingRef.current=true;setPlaying(true);collapseSoon();}}else if(isPlayingRef.current||timerRef.current){if(timerRef.current)pendingWaitRef.current=Math.max(0,gapDeadlineRef.current-Date.now());clearPause();clearCollapse();player.pause();isPlayingRef.current=false;setPlaying(false);}else begin();};
+  const playPause=()=>{if(loading||transitioningRef.current){requestRef.current++;clearBoundary();clearPause();pendingRef.current=positionRef.current;pendingWaitRef.current=0;player.pause();isPlayingRef.current=false;setPlaying(false);setLoading(false);return;}if(positionRef.current&&!isPlayingRef.current&&!timerRef.current){if(pendingRef.current){scheduleNext(pendingRef.current,pendingWaitRef.current);setPlaying(true);}else if(completedRef.current)begin();else{clearPause();player.play();isPlayingRef.current=true;setPlaying(true);collapseSoon();}}else if(isPlayingRef.current||timerRef.current){clearBoundary();if(timerRef.current)pendingWaitRef.current=Math.max(0,gapDeadlineRef.current-Date.now());clearPause();clearCollapse();player.pause();isPlayingRef.current=false;setPlaying(false);}else begin();};
   const chooseRange=(range:Range)=>{setSelectedRange(range);setChosenId(range.start);setSurahText(String(verseAt(range.start).surah));setFirstText(String(verseAt(range.start).ayah));setLastText(String(verseAt(range.end).surah===verseAt(range.start).surah?verseAt(range.end).ayah:verseAt(range.start).ayah));setSelection(verseAt(range.start).surah===verseAt(range.end).surah?'custom':'session');};
   useEffect(()=>{if(selection==='page'){chooseRange(pageRange(page));setSelection('page');}},[page,selection==='page']);
   let displayRange=selectedRange;try{displayRange=selectionRange();}catch{/* Keep the last valid range while a field is being edited. */}
