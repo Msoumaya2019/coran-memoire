@@ -58,11 +58,11 @@ for(const mode of ['each-verse','passage'])for(const count of [1,3,5])test(`As S
  for(const id of expected){finish(c);await settle();c.advanceGap();await settle();}
  assert.deepEqual(c.changes.filter(x=>x!==null),expected);c.close();
 });
-test('200 ms conservées et pause utilisateur sans double délai',async()=>{
- assert.equal(core.DEFAULT_AYAH_GAP_MS,200);
+test('400 ms conservées et pause utilisateur sans double délai',async()=>{
+ assert.equal(core.DEFAULT_AYAH_GAP_MS,400);
  for(const gap of [0,2,5,10]){
   const c=controls('each-verse',null,3,{gap});c.begin();await settle();finish(c);await settle();
-  assert.ok([...c.timers.values()].includes(Math.max(200,gap*1000)));c.close();
+  assert.ok([...c.timers.values()].includes(Math.max(400,gap*1000)));c.close();
  }
 });
 test('Pause durant la pause utilisateur conserve la répétition, Play reprend automatiquement',async()=>{
