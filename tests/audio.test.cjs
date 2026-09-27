@@ -25,7 +25,7 @@ test('continu et arrêt automatique désactivé reprennent au début du passage'
 });
 
 test('l’audio ne sort pas du passage et utilise le numéro global Hafs',()=>{
-  assert.equal(verseAudioUrl(1),'https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3');
+  assert.equal(verseAudioUrl(1),'https://cdn.islamic.network/quran/audio/128/ar.shaatree/1.mp3');
   assert.equal(verseAudioUrl(1,reciters[1]),'https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3');
   assert.equal(verseAudioUrl(1,reciters[2]),'https://cdn.islamic.network/quran/audio/128/ar.minshawi/1.mp3');
   assert.deepEqual(audioRange(2,4),{start:2,end:4});

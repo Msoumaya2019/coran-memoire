@@ -21,7 +21,7 @@ export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
 export type DifficultyMarker = { user?:{createdAt:string}; admin?:{createdAt:string;comment?:string} };
 export type DifficultyEvent = {verseId:number;date:string;origin:'user'|'admin';action:'marked'|'resolved';comment?:string};
-export type AppState = { schema: 1; onboardingDone: boolean; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[] };
+export type AppState = { schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[] };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -51,16 +51,18 @@ export const defaultState = (): AppState => ({schema:1,onboardingDone:false,know
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
+  const audioPreferences=remote.audioPreferences??local.audioPreferences;
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks},shouldPush:true};
   const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader??local.reader,lastRead=remote.lastRead??local.lastRead;
   const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
-  if(JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
+  if(audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
-  return {state:{...remote,bookmarks,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
+  return {state:{...remote,bookmarks,audioPreferences,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
 export function accountState(userId:string,cached:AppState|null,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   const local=cached?.userId===userId?cached:defaultState();
   const safeRemote=remote?.userId&&remote.userId!==userId?null:remote;
+  if(cached?.userId!==userId&&safeRemote)return {state:{...safeRemote,userId},shouldPush:safeRemote.userId!==userId};
   const result=reconcileState(local,safeRemote);
   const owned={...result.state,userId};
   return {state:owned,shouldPush:result.shouldPush||result.state.userId!==userId};
@@ -68,7 +70,7 @@ export function accountState(userId:string,cached:AppState|null,remote:AppState|
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),userId:previous?.userId,profile:previous?.profile,theme:previous?.theme??'lilac',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'tajweedPages',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),userId:previous?.userId,bookmarks:previous?.bookmarks,audioPreferences:previous?.audioPreferences,profile:previous?.profile,theme:previous?.theme??'lilac',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'tajweedPages',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }

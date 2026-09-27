@@ -17,6 +17,7 @@ let progressEnabled=false;
 let correctionsEnabled=true;
 let adminMessagesEnabled=true;
 let registeredToken:string|null=null;
+let registeredUser:string|null=null;
 let installationId:string|null=null;
 let registrationTask:Promise<string|undefined>|null=null;
 let scheduleQueue=Promise.resolve();
@@ -37,7 +38,7 @@ Notifications.setNotificationHandler({handleNotification:async notification=>{
   return {shouldShowBanner:show,shouldShowList:show,shouldPlaySound:show,shouldSetBadge:false};
 }});
 
-export function setActiveConversation(linkId:string|null){activeLinkId=linkId;updatePushPresence(linkId).catch(()=>{});}
+export function setActiveConversation(linkId:string|null){activeLinkId=linkId;updatePushPresence(linkId).catch(error=>console.warn('[Push] presence failed',error));}
 export function setMessagePresentationEnabled(enabled:boolean){messagesEnabled=enabled;}
 export function setProgressPresentationEnabled(enabled:boolean){progressEnabled=enabled;}
 export function setCorrectionPresentationEnabled(enabled:boolean){correctionsEnabled=enabled;}
@@ -86,14 +87,25 @@ async function registerPushDeviceNow(){
   if(readError)throw readError;
   if(stored?.user_id!==user.id||stored.expo_push_token!==token||stored.platform!==Platform.OS)throw new Error('Jeton push non associé à ce compte.');
   if(__DEV__)console.log('[Push] Supabase confirmed',{platform:stored.platform,userId:stored.user_id,updatedAt:stored.updated_at});
-  registeredToken=token;
+  const active=await currentUser();if(active?.id!==user.id)throw new Error('Le compte a changé pendant l’inscription push. Réessaie.');
+  registeredUser=user.id;registeredToken=token;
   return token;
 }
 
-export function registerPushDevice(){
-  if(registrationTask)return registrationTask;
+export async function registerPushDevice(){
+  if(registrationTask){await registrationTask;const user=await currentUser();if(user?.id===registeredUser)return registeredToken??undefined;}
   registrationTask=registerPushDeviceNow().finally(()=>{registrationTask=null;});
   return registrationTask;
+}
+
+export async function pushDiagnostic(){
+  await registerPushDevice();
+  if(!supabase)throw new Error('Synchronisation non configurée.');
+  const {data,error}=await supabase.rpc('my_push_delivery_status');if(error)throw error;
+  const last=data?.[0];
+  if(__DEV__)console.log('[Push] delivery diagnostic',{platform:Platform.OS,userId:registeredUser,deliveries:data});
+  const provider=last?.error_code==='InvalidCredentials'?'Expo signale des credentials APNs manquants ou invalides.':last?.error_code==='DeviceNotRegistered'?'Un ancien jeton a été refusé par le fournisseur.':last?`Dernier envoi : ${last.status}${last.error_code?' · '+last.error_code:''}`:'Aucun nouvel envoi suivi pour ce compte.';
+  return `Permission : OK · ${Platform.OS==='ios'?'iOS':'Android'} · Jeton Expo et association Supabase : OK. ${provider}`;
 }
 
 export async function updatePushPresence(linkId:string|null){
@@ -104,11 +116,13 @@ export async function updatePushPresence(linkId:string|null){
 }
 
 export async function unregisterPushDevice(){
-  if(!supabase||!registeredToken)return;
+  if(!supabase)return;
+  if(registrationTask)await registrationTask.catch(error=>console.warn('[Push] pending registration',error));
   const user=await currentUser();if(!user)return;
-  const {error}=await supabase.from('push_devices').delete().eq('expo_push_token',registeredToken).eq('user_id',user.id);
+  installationId=installationId??await AsyncStorage.getItem('notification-installation-id');if(!installationId)return;
+  const {error}=await supabase.from('push_devices').delete().eq('installation_id',installationId).eq('user_id',user.id);
   if(error)throw error;
-  registeredToken=null;
+  registeredToken=null;registeredUser=null;
 }
 
 export async function saveNotificationPreferences(preferences:{messages:boolean;friendRequests:boolean;sharedProgress:boolean;revision:boolean;corrections:boolean;adminMessages:boolean;messagePreview:boolean}){
@@ -116,6 +130,16 @@ export async function saveNotificationPreferences(preferences:{messages:boolean;
   const user=await currentUser();if(!user)return;
   const {error}=await supabase.from('notification_preferences').upsert({user_id:user.id,messages_enabled:preferences.messages,friend_requests_enabled:preferences.friendRequests,shared_progress_enabled:preferences.sharedProgress,revision_reminders_enabled:preferences.revision,corrections_enabled:preferences.corrections,admin_messages_enabled:preferences.adminMessages,message_preview_enabled:preferences.messagePreview,updated_at:new Date().toISOString()});
   if(error)throw error;
+}
+
+export async function syncLearningReminder(enabled:boolean){
+  const next=scheduleQueue.catch(error=>console.warn('[Push] reminder queue',error)).then(async()=>{
+    const scheduled=await Notifications.getAllScheduledNotificationsAsync();
+    await Promise.all(scheduled.filter(item=>item.content.data?.kind===reminderKind).map(item=>Notifications.cancelScheduledNotificationAsync(item.identifier)));
+    if(!enabled||!await ensureNotificationPermission())return;
+    await Notifications.scheduleNotificationAsync({content:{title:'Ton programme du Coran',body:'Retrouve ton passage du jour et prends un moment pour apprendre.',data:{kind:reminderKind},sound:'default'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour:19,minute:0,channelId:'learning'}});
+    if(__DEV__)console.log('[Push] learning reminder scheduled',{platform:Platform.OS,hour:19});
+  });scheduleQueue=next;return next;
 }
 
 export async function testLocalNotification(){

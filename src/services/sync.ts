@@ -11,7 +11,7 @@ export const supabase=syncConfigured?createClient(url!,key!,{
 }):null;
 const mobileAuthRedirect='coranmemoire://auth';
 
-export async function currentUser() {const response=await supabase?.auth.getUser();return response?.data.user??null;}
+export async function currentUser() {const response=await supabase?.auth.getUser();if(response?.error)throw response.error;return response?.data.user??null;}
 export async function signIn(email:string,password:string,register=false) {
   if(!supabase)throw new Error('Synchronisation non configurée');
   const result=register?await supabase.auth.signUp({email,password,options:{emailRedirectTo:mobileAuthRedirect}}):await supabase.auth.signInWithPassword({email,password});

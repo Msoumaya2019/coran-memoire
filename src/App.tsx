@@ -21,7 +21,7 @@ import tajweedDimensions from './data/mushaf-tajweed-dimensions.json';
 import {AdminScreen,FriendsScreen} from './SocialScreens';
 import {ProfileHeaderButton} from './ui/ProfileHeaderButton';
 import {clearFriendsSnapshot,ensureSocialProfile,FriendProfile,isSocialAdmin,mySocialProfile,prefetchFriendsSnapshot,publishSocialProgress,setSocialOnline,unreadMessageCount,updateSocialProfile} from './services/social';
-import { Notifications, cancelAutomaticReminders, ensureNotificationPermission, notificationDestination, registerPushDevice, saveNotificationPreferences, scheduledReminderCounts, setAdminMessagePresentationEnabled, setCorrectionPresentationEnabled, setMessagePresentationEnabled, setProgressPresentationEnabled, testLocalNotification, unregisterPushDevice, updatePushPresence } from './services/notifications';
+import { Notifications, syncLearningReminder, ensureNotificationPermission, notificationDestination, registerPushDevice, pushDiagnostic, saveNotificationPreferences, scheduledReminderCounts, setAdminMessagePresentationEnabled, setCorrectionPresentationEnabled, setMessagePresentationEnabled, setProgressPresentationEnabled, testLocalNotification, unregisterPushDevice, updatePushPresence } from './services/notifications';
 import {AudioCommand,PassageAudioPlayer} from './PassageAudioPlayer';
 import {RecitationRecorder} from './RecitationRecorder';
 import {myCorrectionMarkers,syncPendingRecitations} from './services/recitations';
@@ -53,6 +53,8 @@ function AppContent(){
   const [account,setAccount]=useState<string|null>(null);
   const [accountIntro,setAccountIntro]=useState<'checking'|'show'|'done'>('checking');
   const [notice,setNotice]=useState('');
+  const wizardStep=(value:AppState)=>value.onboardingDone?null:value.onboardingStep??(value.profile?.firstName?0:-1);
+  const setWizardStep=(step:number|null)=>{setWizard(step);const latest=loadState();if(step!==null&&!latest.onboardingDone)update(touch({...latest,onboardingStep:step}));};
   const [socialView,setSocialView]=useState<'friends'|'admin'|null>(null);
   const [dailyOpen,setDailyOpen]=useState(false),[dailyId,setDailyId]=useState<string>();
   const [reviewOpen,setReviewOpen]=useState(false);
@@ -66,7 +68,7 @@ function AppContent(){
   const [unreadCount,setUnreadCount]=useState(0);
   const syncWarningShown=useRef(false);
   const today=todayLocal();
-  useEffect(()=>{(async()=>{
+  useEffect(()=>{if(!account||accountIntro!=='done'||!state.onboardingDone)return;(async()=>{
     const permission=await Notifications.getPermissionsAsync();
     let granted=permission.granted||permission.ios?.status===Notifications.IosAuthorizationStatus.PROVISIONAL||permission.ios?.status===Notifications.IosAuthorizationStatus.EPHEMERAL;
     if(!granted&&(await AsyncStorage.getItem('notifications-requested-on-device'))!=='yes'){
@@ -78,29 +80,26 @@ function AppContent(){
       const next=touch({...current,notifications:{...current.notifications,messages:current.notifications?.messages!==false,learning:false,permissionExplained:true}});
       saveState(next);return next;
     });
-  })().catch(error=>console.warn('[Push] permission setup failed',error));},[state.notifications?.permissionExplained]);
+  })().catch(error=>console.warn('[Push] permission setup failed',error));},[account,accountIntro,state.onboardingDone,state.notifications?.permissionExplained]);
   const update=(next:AppState)=>{setState(next);saveState(next);if(account){pushState(next).then(()=>{syncWarningShown.current=false;}).catch(()=>{if(!syncWarningShown.current){syncWarningShown.current=true;setNotice('Sauvegarde locale effectuée. Synchronisation en attente.');}});publishSocialProgress(next).catch(()=>{});}};
   const activateAccount=async(user:{id:string;email?:string})=>{
     if(state.userId&&state.userId!==user.id)clearFriendsSnapshot();
-    setAccountIntro('done');
-    AsyncStorage.setItem('account-intro-complete','yes').catch(()=>{});
     const remote=await pullState();
     const result=accountState(user.id,loadAccountState(user.id),remote);
     saveState(result.state);setState(result.state);setAccount(user.email??user.id);
-    setWizard(result.state.profile?.firstName?result.state.onboardingDone?null:0:-1);
-    if(result.shouldPush)await pushState(result.state);
+    setWizard(wizardStep(result.state));
+    if(result.shouldPush)pushState(result.state).catch(error=>{console.warn('[Account] Sync',error);setNotice('Données restaurées. Synchronisation en attente.');});
+    setAccountIntro('done');
     if(user.email)syncStagedAvatar(user.email).catch(()=>{});
     return result.state;
   };
   const leaveAccount=()=>{
     clearFriendsSnapshot();
     const fresh=defaultState();saveState(fresh);setState(fresh);setAccount(null);
-    setReader(null);setReviewOpen(false);setRecitationsOpen(false);setPendingRecitationId(null);setSocialView(null);setUtilityView(null);setTab('Accueil');setWizard(-1);
+    setReader(null);setReviewOpen(false);setRecitationsOpen(false);setPendingRecitationId(null);setSocialView(null);setUtilityView(null);setTab('Accueil');setWizard(-1);setAccountIntro('show');
   };
-  useEffect(()=>{Promise.all([AsyncStorage.getItem('account-intro-complete'),supabase?.auth.getSession()]).then(([marker,session])=>{
-    const existing=marker==='yes'||Boolean(session?.data.session||state.userId||state.profile?.firstName||state.onboardingDone);
-    setAccountIntro(current=>current==='done'?'done':existing||!syncConfigured?'done':'show');
-  }).catch(()=>setAccountIntro('done'));},[]);
+  const restoreSession=async()=>{setAccountIntro('checking');try{if(!supabase){setNotice('La connexion au serveur est indisponible.');setAccountIntro('show');return;}const {data,error}=await supabase.auth.getSession();if(error)throw error;if(!data.session){setAccountIntro('show');return;}const user=data.session.user;try{await activateAccount(user);}catch(error){const cached=loadAccountState(user.id);if(!cached)throw error;saveState(cached);setState(cached);setAccount(user.email??user.id);setWizard(wizardStep(cached));setAccountIntro('done');setNotice('Compte restauré hors ligne. Synchronisation en attente.');}}catch(error:any){console.warn('[Account] Restoration failed',error);setNotice(`Restauration impossible : ${error?.message??'Vérifie ta connexion.'}`);setAccountIntro('show');}};
+  useEffect(()=>{restoreSession();},[]);
   const resetAll=async()=>{
     const fresh=resetAllProgress(loadState());
     saveState(fresh);setState(fresh);setReader(null);setPage(1);setTab('Accueil');setWizard(fresh.profile?.firstName?0:-1);
@@ -118,8 +117,9 @@ function AppContent(){
     };
     Notifications.getLastNotificationResponseAsync().then(response=>{if(response)open(response.notification.request.content.data);}).catch(()=>{});
     const response=Notifications.addNotificationResponseReceivedListener(event=>open(event.notification.request.content.data));
+    const received=Notifications.addNotificationReceivedListener(event=>{if(__DEV__)console.log('[Push] received',{platform:Platform.OS,kind:event.request.content.data?.kind,appState:DeviceAppState.currentState});});
     const tokens=Notifications.addPushTokenListener(()=>{if(loadState().notifications?.permissionExplained)registerPushDevice().catch(error=>console.warn('[Push] token refresh failed',error));});
-    return()=>{response.remove();tokens.remove();};
+    return()=>{response.remove();tokens.remove();received.remove();};
   },[]);
   useEffect(()=>{if(account&&pendingLinkId){setReader(null);setWizard(null);setUtilityView(null);setTab('Amis');setSocialView('friends');}},[account,pendingLinkId]);
   useEffect(()=>{if(account&&pendingInviteCode){setReader(null);setWizard(null);setUtilityView(null);setTab('Amis');setSocialView('friends');}},[account,pendingInviteCode]);
@@ -127,7 +127,7 @@ function AppContent(){
   useEffect(()=>{setProgressPresentationEnabled(state.notifications?.sharedProgress===true);},[state.notifications?.sharedProgress]);
   useEffect(()=>{setCorrectionPresentationEnabled(state.notifications?.corrections!==false);},[state.notifications?.corrections]);
   useEffect(()=>{setAdminMessagePresentationEnabled(state.notifications?.adminMessages!==false);},[state.notifications?.adminMessages]);
-  useEffect(()=>{cancelAutomaticReminders().catch(()=>{});},[]);
+  useEffect(()=>{if(!account||!state.onboardingDone)return;syncLearningReminder(state.notifications?.learning===true).catch(error=>console.warn('[Push] learning reminder failed',error));},[account,state.onboardingDone,state.notifications?.learning]);
   useEffect(()=>{if(!state.onboardingDone||!reviewsEnabled(state))return;const next=prepareReviewSchedule(state);if(next!==state)update(next);},[state.onboardingDone,state.knowledge,state.memorizedAt,state.reviewSettings?.enabled,state.reviewSettings?.cycleDays]);
   useEffect(()=>{if(!account)return;
     const prefs=state.notifications;
@@ -148,15 +148,13 @@ function AppContent(){
       const parsedLink=new URL(url);
       const linkType=new URLSearchParams(parsedLink.hash.replace(/^#/,'')).get('type')??parsedLink.searchParams.get('type');
       const recovering=linkType==='recovery';setPasswordRecovery(recovering);
-      setWizard(recovering?null:restored.profile?.firstName?restored.onboardingDone?null:0:-1);setUtilityView('profile');
+      setWizard(recovering?null:wizardStep(restored));setUtilityView('profile');
       setNotice(recovering?'Lien confirmé. Choisis maintenant un mot de passe.':'Adresse confirmée. Ton compte est prêt.');
     }catch(e:any){setNotice(`Lien de connexion : ${e.message}`);}};
     Linking.getInitialURL().then(url=>{if(url)handle(url);}).catch(()=>{});
     const subscription=Linking.addEventListener('url',event=>{handle(event.url);});
     return()=>subscription.remove();
   },[]);
-  useEffect(()=>{currentUser().then(async user=>{if(!user)return;try{await activateAccount(user);}catch{const cached=loadAccountState(user.id);if(cached){saveState(cached);setState(cached);setAccount(user.email??user.id);setWizard(cached.profile?.firstName?cached.onboardingDone?null:0:-1);setAccountIntro('done');}}}).catch(()=>{});},[]);
-  useEffect(()=>{supabase?.auth.getSession().then(({data:{session}})=>{if(!session&&loadState().userId)leaveAccount();}).catch(()=>{});},[]);
   useEffect(()=>{if(!account){setAdmin(false);return;}let active=true;
     (async()=>{try{await ensureSocialProfile();if(active){setAdmin(await isSocialAdmin());await publishSocialProgress(loadState());await setSocialOnline(true);}}catch{}})();
     const timer=setInterval(()=>{if(DeviceAppState.currentState==='active')setSocialOnline(true).catch(()=>{});},45000);
@@ -192,9 +190,9 @@ function AppContent(){
   return <SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}} {...(reader||socialView==='friends'||tab==='Amis'?{}:edgeBack.panHandlers)}><StatusBar hidden={readerFullscreen} />
     {!reader&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&socialView!=='admin'&&<AppTopNavigation tab={tab} onTab={name=>{setTab(name);setSocialView(null);}} firstName={state.profile?.firstName} onProfile={()=>setUtilityView('profile')} onSettings={()=>setUtilityView('settings')} title={utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'} showTabs={!utilityView} onBack={utilityView?()=>setUtilityView(null):undefined}/>}
 
-    {accountIntro==='checking'?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Label>Ouverture de l’application…</Label></View>:accountIntro==='show'?<AccountWelcome onAuthenticated={activateAccount} onContinue={()=>{setAccountIntro('done');AsyncStorage.setItem('account-intro-complete','yes').catch(()=>{});}} />:reader?<ReaderScreen reader={reader} page={page} setPage={setPage} onClose={closeReader} onChangeSurah={s=>{setReader({range:{start:s.start,end:s.end}});setPage(pageOf(s.start));}} onShareRecitation={id=>{setPendingRecitationId(id);setReader(null);setRecitationsOpen(true);}} onReviewDone={(task,grade)=>{const next=gradeReviewTask(state,task,grade);update(next);const upcoming=reviewPlan(next).session[0];if(upcoming)openReader({range:upcoming,reviewTask:upcoming});else if(!reviewOnly&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});else closeReader();}} state={state} update={update} fullscreen={readerFullscreen} setFullscreen={setReaderFullscreen} />:
+    {accountIntro==='checking'?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Label>Ouverture de l’application…</Label></View>:accountIntro==='show'?<AccountWelcome onAuthenticated={activateAccount} onRetry={restoreSession} />:reader?<ReaderScreen reader={reader} page={page} setPage={setPage} onClose={closeReader} onChangeSurah={s=>{setReader({range:{start:s.start,end:s.end}});setPage(pageOf(s.start));}} onShareRecitation={id=>{setPendingRecitationId(id);setReader(null);setRecitationsOpen(true);}} onReviewDone={(task,grade)=>{const next=gradeReviewTask(state,task,grade);update(next);const upcoming=reviewPlan(next).session[0];if(upcoming)openReader({range:upcoming,reviewTask:upcoming});else if(!reviewOnly&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});else closeReader();}} state={state} update={update} fullscreen={readerFullscreen} setFullscreen={setReaderFullscreen} />:
       dailyOpen?<DailyContentsScreen userId={state.userId} initialId={dailyId} onClose={()=>{setDailyOpen(false);setDailyId(undefined);}} />:
-      wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizard} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
+      wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizardStep} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
       recitationsOpen?<RecitationsScreen onViewInvocation={id=>{setDailyId(id);setDailyOpen(true);}} initialRecitationId={pendingRecitationId} onClose={()=>{setRecitationsOpen(false);setPendingRecitationId(null);}} />:
       utilityView?<ScrollView contentContainerStyle={{paddingHorizontal:18,paddingBottom:35}}><ProfileScreen mode={utilityView} state={state} update={update} account={account} onAuthenticated={activateAccount} onSignedOut={leaveAccount} setNotice={setNotice} openKnowledge={()=>setWizard(0)} openGoal={()=>setWizard(1)} openFriends={()=>{setUtilityView(null);setTab('Amis');setSocialView('friends');}} openAdmin={()=>{setUtilityView(null);setSocialView('admin');}} openRecitations={()=>setRecitationsOpen(true)} admin={admin} passwordRecovery={passwordRecovery} setPasswordRecovery={setPasswordRecovery} onPasswordReady={()=>{if(!state.profile?.firstName)setWizard(-1);else if(!state.onboardingDone)setWizard(0);}} onReset={resetAll} /></ScrollView>:
       socialView==='friends'||tab==='Amis'?<FriendsScreen userId={state.userId??null} initialLinkId={pendingLinkId} initialCode={pendingInviteCode} shareText={`Mon objectif ${state.goal.label} est atteint à ${percent(prog.goal)}. Cette semaine, j’ai appris ${statsNow.week} versets.`} onUnreadChange={()=>unreadMessageCount().then(setUnreadCount).catch(()=>{})} onClose={()=>{setSocialView(null);setPendingLinkId(null);setPendingInviteCode(null);setTab('Accueil');}} />:
@@ -212,7 +210,8 @@ function AppContent(){
   </SafeAreaView>;
 }
 
-function AccountWelcome({onAuthenticated,onContinue}:{onAuthenticated:(user:{id:string;email?:string})=>Promise<AppState>;onContinue:()=>void}){
+function AccountWelcome({onAuthenticated,onRetry}:{onAuthenticated:(user:{id:string;email?:string})=>Promise<AppState>;onRetry:()=>void}){
+  const [mode,setMode]=useState<'login'|'signup'|null>(null);
   const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
   const [busy,setBusy]=useState(false);
@@ -231,17 +230,17 @@ function AccountWelcome({onAuthenticated,onContinue}:{onAuthenticated:(user:{id:
   };
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1,justifyContent:'center',paddingHorizontal:24,paddingVertical:30}}>
     <View style={{alignItems:'center',marginBottom:24}}><Label style={{fontSize:36,color:colors.green}}>۞</Label><Title>Bienvenue</Title><Label style={{textAlign:'center',color:colors.muted,marginTop:6}}>Crée ton compte pour retrouver ton apprentissage sur tous tes appareils.</Label></View>
-    <Card>
-      <Label style={{fontSize:18,fontWeight:'700',marginBottom:12}}>Créer mon compte</Label>
+    {!mode?<Card><Button onPress={()=>setMode('login')}>Se connecter</Button><Button secondary onPress={()=>setMode('signup')}>Créer mon compte</Button><Button secondary small onPress={onRetry}>Réessayer la restauration de ma session</Button></Card>:<Card>
+      <Label style={{fontSize:18,fontWeight:'700',marginBottom:12}}>{mode==='signup'?'Créer mon compte':'Se connecter'}</Label>
       <Field value={email} onChangeText={setEmail} placeholder="Adresse e-mail" keyboardType="email-address" autoCapitalize="none" />
       <Field value={password} onChangeText={setPassword} placeholder="Mot de passe (au moins 6 caractères)" secureTextEntry />
-      <Pressable onPress={()=>chooseAvatar().then(uri=>{if(uri)setPhotoUri(uri);}).catch(error=>setMessage(error?.message??'Photo indisponible.'))} style={{flexDirection:'row',alignItems:'center',gap:12,marginVertical:12}}><FriendAvatar name="Apprenant" uri={photoUri} size={44} /><Label style={{color:colors.green2}}>Ajouter une photo (facultatif)</Label></Pressable>
-      <Button disabled={busy||!email.includes('@')||password.length<6} onPress={()=>submit(true)}>Créer mon compte</Button>
-      <Button secondary disabled={busy||!email.includes('@')||!password} onPress={()=>submit(false)}>J’ai déjà un compte · me connecter</Button>
+      {mode==='signup'&&<Pressable onPress={()=>chooseAvatar().then(uri=>{if(uri)setPhotoUri(uri);}).catch(error=>setMessage(error?.message??'Photo indisponible.'))} style={{flexDirection:'row',alignItems:'center',gap:12,marginVertical:12}}><FriendAvatar name="Apprenant" uri={photoUri} size={44} /><Label style={{color:colors.green2}}>Ajouter une photo (facultatif)</Label></Pressable>}
+      <Button disabled={busy||!email.includes('@')||(mode==='signup'?password.length<6:!password)} onPress={()=>submit(mode==='signup')}>{busy?'Connexion…':mode==='signup'?'Créer mon compte':'Se connecter'}</Button>
+      {mode==='login'&&<Button secondary small disabled={busy||!email.includes('@')} onPress={()=>requestPasswordLink(email).then(()=>setMessage('Un lien de réinitialisation a été envoyé.')).catch(error=>setMessage(error.message))}>Mot de passe oublié</Button>}
+      {mode==='signup'&&message&&<Button secondary small disabled={busy||!email.includes('@')} onPress={()=>resendSignupConfirmation(email).then(()=>setMessage('Courriel de confirmation renvoyé.')).catch(error=>setMessage(error.message))}>Renvoyer la confirmation</Button>}
       {message?<Label style={{marginTop:12,color:colors.text}}>{message}</Label>:null}
-      {message.includes('confirmation')?<Button secondary small onPress={onContinue}>Commencer mon programme</Button>:null}
-    </Card>
-    <Pressable onPress={onContinue} style={{alignSelf:'center',padding:10,marginTop:10}}><Label style={{fontSize:12,color:colors.muted,textDecorationLine:'underline'}}>Continuer sans compte</Label></Pressable>
+      <Button secondary small disabled={busy} onPress={()=>{setMode(null);setMessage('');}}>Retour</Button>
+    </Card>}
   </ScrollView>;
 }
 
@@ -384,16 +383,17 @@ function ProfileScreen({mode,state,update,account,onAuthenticated,onSignedOut,se
         <Label style={{color:colors.muted,fontSize:13,marginTop:8}}>Les notifications t’avertissent des messages, invitations, corrections et rappels personnels envoyés par le professeur.</Label>
         <Button secondary onPress={()=>ensureNotificationPermission(true).then(granted=>{if(granted){setDeviceNotificationsAllowed(true);update(touch({...state,notifications:{...notificationPrefs,permissionExplained:true}}));setNotice('Notifications autorisées.');}else setNotice('Autorisation refusée. Tu peux la modifier dans les réglages du téléphone.');}).catch(()=>setNotice('Les notifications sont indisponibles sur ce téléphone.'))}>Autoriser les notifications sur ce téléphone</Button>
       </>:null}
+      {notificationSwitch('Rappel quotidien d’apprentissage à 19 h','learning',false)}
       {notificationSwitch('Messages privés','messages',true)}
       {notificationSwitch('Demandes d’amis','friendRequests',true)}
       {notificationSwitch('Progression partagée par les amis','sharedProgress',false)}
       {notificationSwitch('Corrections de mes récitations','corrections',true)}
       {notificationSwitch('Rappels personnels du professeur','adminMessages',true)}
       {notificationSwitch('Afficher le contenu des messages','messagePreview',true)}
-      <Label style={{color:colors.muted,fontSize:13,marginTop:12}}>Les rappels automatiques à 19 h sont désactivés. Le professeur peut envoyer des notifications personnalisées.</Label>
+      <Label style={{color:colors.muted,fontSize:13,marginTop:12}}>Le rappel quotidien est facultatif et programmé sur ce téléphone. Le professeur peut aussi envoyer des notifications personnalisées.</Label>
       <Button secondary small onPress={()=>testLocalNotification().then(()=>setNotice('Notification locale de test programmée dans 5 secondes.')).catch(e=>setNotice(`Test local impossible : ${e.message}`))}>Tester une notification sur ce téléphone</Button>
       <Button secondary small onPress={()=>scheduledReminderCounts().then(counts=>setNotice(`${counts.learning} ancien(s) rappel(s) quotidien(s) et ${counts.revision} rappel(s) de révision programmés sur ce téléphone.`)).catch(e=>setNotice(`Vérification impossible : ${e.message}`))}>Vérifier les rappels programmés</Button>
-      {account?<Button secondary small onPress={()=>registerPushDevice().then(()=>setNotice('Jeton push enregistré. La réception dépend encore de Firebase ou APNs.')).catch(e=>setNotice(`Push indisponible : ${e.message}`))}>Vérifier le jeton push</Button>:null}
+      {account?<Button secondary small onPress={()=>pushDiagnostic().then(setNotice).catch(e=>setNotice(`Push indisponible : ${e.message}`))}>Vérifier le jeton push</Button>:null}
     </Card>
     <Card><Label style={{fontWeight:'700'}}>Tout remettre à 0</Label><Label style={{color:colors.muted,fontSize:13,marginVertical:8}}>Recommencer le questionnaire et effacer tout l’apprentissage et toutes les révisions. Ton prénom et ton thème seront conservés.</Label><Button secondary disabled={resetting} onPress={confirmReset}>Réinitialiser apprentissage et révisions</Button><Button secondary onPress={confirmPreferenceReset}>Réinitialiser mes préférences</Button></Card>
     <Card><Label style={{fontWeight:'600',fontSize:14,color:colors.muted}}>Sources du Coran</Label><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Texte Uthmani Hafs : Tanzil Project, copyright 2007–2021, licence CC BY 3.0. Texte reproduit sans modification.</Label><Pressable onPress={()=>Linking.openURL('https://tanzil.net')}><Label style={{color:colors.green2,textDecorationLine:'underline',marginTop:7}}>Voir Tanzil et les mises à jour ↗</Label></Pressable><Label style={{color:colors.muted,fontSize:13,marginTop:7}}>Pages Hafs 1405 issues de l’IPA fournie. Coran Tajweed : Dar Al Maarifah, pages originales et coordonnées du paquet Quran pour iOS, reproduites sans modification. Lecture simplifiée : annotations de cpfair sous CC BY 4.0 sur texte Tanzil Hafs 2017. Traduction française du sens : Rachid Maach, version 1.0.3, QuranEnc. Divisions juz’, hizb et rub‘ : Quran Meta. Les toumoun Hafs attendent une validation indépendante.</Label></Card>
@@ -437,7 +437,7 @@ function Onboarding({state,update,step,setStep,onDone}:{state:AppState;update:(s
     }
     if(step===2){const allowed=paceLevel==='beginner'?beginnerPaces:paceLevel==='intermediate'?['halfPage']:intensivePaces;if(!allowed.includes(state.pace)){setError('Choisis une quantité parmi celles du niveau sélectionné.');return;}setStep(3);return;}
     if(!state.learningDays.length){setError('Sélectionne au moins un jour d’apprentissage.');return;}
-    const done=generateProgram(seedInitialRevisions(touch({...state,onboardingDone:true})));update(done);onDone();
+    const done=generateProgram(seedInitialRevisions(touch({...state,onboardingDone:true,onboardingStep:undefined})));update(done);onDone();
   };
   return <><View style={{paddingHorizontal:18,paddingBottom:8}}><Label style={{fontSize:12,color:colors.gold,fontWeight:'700'}}>{step===-1?'BIENVENUE':`CONFIGURATION · ${step+1}/4`}</Label><Title>{step===-1?'Faisons connaissance':['Que connais-tu déjà ?','Quel est ton objectif ?','Quel rythme souhaites-tu ?','Quels jours souhaites-tu apprendre ?'][step]}</Title></View>
     <ScrollView contentContainerStyle={{paddingHorizontal:18,paddingBottom:15}}>
@@ -523,7 +523,7 @@ function ReaderScreen({reader,page,setPage,onClose,onChangeSurah,onShareRecitati
         {fullscreen&&<Pressable accessibilityLabel="Quitter le plein écran" onPress={()=>setFullscreen(false)} style={{position:'absolute',right:8,top:8,width:36,height:36,borderRadius:18,backgroundColor:colors.paper+'DD',alignItems:'center',justifyContent:'center'}}><Icon name="fullscreen-exit" color={colors.green} size={20}/></Pressable>}
       </View>
       {(bookmarkMode||bookmarkNotice)&&<View pointerEvents="none" style={{position:'absolute',top:fullscreen?8:62,left:10,right:10,alignItems:'center'}}><Label style={{backgroundColor:colors.soft,color:colors.green,padding:10,borderRadius:12,fontSize:12}}>{bookmarkMode?'Touche le verset exact à enregistrer':bookmarkNotice}</Label></View>}
-      <View style={fullscreen||sessionPanel?{height:0,overflow:'hidden'}:{position:'absolute',bottom:sessionToolbarHeight+6,left:0,right:0,maxHeight:'70%',zIndex:5}} pointerEvents={fullscreen||sessionPanel?'none':'auto'}><PassageAudioPlayer sessionRange={reader.range} page={page} command={audioCommand} onVerseChange={followAudio} onDockChange={open=>setAudioDock(open)} sessionMode={learning} compact maxPanelHeight={Math.max(140,readerViewport.height*.34)} hideLaunch/></View>
+      <View style={sessionPanel&&!fullscreen?{height:0,overflow:'hidden'}:{position:'absolute',bottom:fullscreen?10:sessionToolbarHeight+6,left:0,right:0,maxHeight:'70%',zIndex:5}} pointerEvents={sessionPanel&&!fullscreen?'none':'auto'}><PassageAudioPlayer userId={state.userId} reciterPreference={state.audioPreferences?.reciterId} onReciterPreference={id=>update(touch({...loadState(),audioPreferences:{reciterId:id}}))} sessionRange={reader.range} page={page} command={audioCommand} onVerseChange={followAudio} onDockChange={open=>setAudioDock(open)} sessionMode={learning} fullscreen={fullscreen} compact maxPanelHeight={Math.max(140,readerViewport.height*.34)} hideLaunch/></View>
       {!fullscreen&&<View onLayout={event=>setSessionToolbarHeight(event.nativeEvent.layout.height)}><SessionToolbar reading={!learning} active={bookmarkMode?'bookmark':sessionPanel??(audioDock?'audio':null)} onBookmark={()=>{setSessionPanel(null);setBookmarkMode(!bookmarkMode);}} onRecord={()=>openPanel('record')} onAudio={openAudio} onTranslation={()=>openPanel('translation')} onOptions={()=>openPanel('options')}/></View>}
       {sessionPanel&&!fullscreen&&<View style={{position:'absolute',bottom:sessionToolbarHeight+6,left:8,right:8,maxHeight:'70%',backgroundColor:colors.paper,borderRadius:24,borderWidth:1,borderColor:colors.line,padding:16,...premiumShadow,elevation:12}}><View style={{flexDirection:'row',alignItems:'center',marginBottom:10}}><Label style={{flex:1,fontWeight:'800'}}>{sessionPanel==='record'?'Ma récitation':sessionPanel==='translation'?'Traduction française':'Plus d’options'}</Label><Pressable disabled={recordingActive} accessibilityLabel="Fermer le panneau" onPress={()=>{setSessionPanel(null);setSelectedVerse(null);}} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Icon name="close" color={colors.green}/></Pressable></View><ScrollView keyboardShouldPersistTaps="handled">
         {sessionPanel==='record'&&<RecitationRecorder key={`${reader.range.start}-${reader.range.end}`} range={learning?reader.range:pageRange(page)} onRecordingChange={setRecordingActive} onShare={item=>onShareRecitation(item.id)}/>}
@@ -549,6 +549,6 @@ function ReaderScreen({reader,page,setPage,onClose,onChangeSurah,onShareRecitati
     {selectedVerse!==null&&<View style={{position:'absolute',bottom:85,left:12,right:12,zIndex:8,backgroundColor:colors.paper,padding:14,borderRadius:17,borderWidth:1,borderColor:colors.line,elevation:8}}><Label style={{fontWeight:'700',marginBottom:6}}>Verset sélectionné : {surahs[verseAt(selectedVerse).surah-1].name} {verseAt(selectedVerse).ayah}</Label><Button small onPress={()=>audioAction(selectedVerse,'listen')}>▶ Écouter ce verset</Button><Button small secondary onPress={()=>audioAction(selectedVerse,'repeat')}>🔁 Répéter ce verset</Button><Button small secondary onPress={()=>audioAction(selectedVerse,'select')}>📖 Sélectionner un passage</Button>{reviewsEnabled(state)&&<Button small secondary onPress={()=>{update(toggleDifficulty(state,selectedVerse));setSelectedVerse(null);}}>{state.difficultyMarkers?.[selectedVerse]?.user?'Retirer des révisions prioritaires':'Marquer comme difficile'}</Button>}{reviewsEnabled(state)&&state.difficultyMarkers?.[selectedVerse]?.admin?.comment&&<Label style={{fontSize:12,color:colors.red}}>À retravailler — professeur : {state.difficultyMarkers[selectedVerse].admin!.comment}</Label>}<Pressable onPress={()=>setSelectedVerse(null)} style={{alignItems:'center',padding:5}}><Label style={{color:colors.muted,fontSize:12}}>Fermer</Label></Pressable></View>}
     {translationOptions&&<View style={{position:'absolute',bottom:85,left:12,right:12,zIndex:8,backgroundColor:colors.paper,padding:14,borderRadius:17,borderWidth:1,borderColor:colors.line}}><Label style={{fontWeight:'700'}}>Lecture</Label><Button small onPress={()=>{setLanguage(language==='ar'?'fr':'ar');setTranslationOptions(false);}}>Passer en {language==='ar'?'français':'arabe'}</Button><Button secondary small onPress={()=>setTranslationOptions(false)}>Fermer</Button></View>}
     <SurahPicker visible={surahPicker} currentSurah={currentSurah.number} onClose={()=>setSurahPicker(false)} onSelect={surah=>{stopActiveAudio();setPlayingVerseId(null);setAudioCommand(null);setSelectedVerse(null);setSurahPicker(false);onChangeSurah(surah);readerScroll.current?.scrollTo({y:0,animated:false});}} />
-    <PassageAudioPlayer sessionRange={reader.range} page={page} command={audioCommand} onVerseChange={followAudio} fullscreen={fullscreen} hideLaunch={!!reader.sessionId} />
+    <PassageAudioPlayer userId={state.userId} reciterPreference={state.audioPreferences?.reciterId} onReciterPreference={id=>update(touch({...loadState(),audioPreferences:{reciterId:id}}))} sessionRange={reader.range} page={page} command={audioCommand} onVerseChange={followAudio} fullscreen={fullscreen} hideLaunch={!!reader.sessionId} />
   </View>;
 }

@@ -6,7 +6,8 @@ export const reciters = [
   {id:'ar.minshawi',name:'Mohammed Siddiq Al-Minshawi',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
 ] as const;
-export const defaultReciter=reciters[1];
+export const defaultReciter=reciters[3];
+export const DEFAULT_AYAH_GAP=650;
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';
