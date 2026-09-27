@@ -31,3 +31,11 @@ Aucune nouvelle variable d’environnement.
 
 65 tests et TypeScript réussis. Vérification live Supabase des jetons, fonctions, erreurs tickets et receipts. Deux receipts Android acceptés et un ancien jeton Android DeviceNotRegistered observés ; aucune configuration Android changée.
 Les tests visuels locaux ne remplacent pas les essais iOS/Android physiques ni l’écoute réelle. Le profil fourni est pour un autre App ID ; le fournisseur de signature doit fournir le credential serveur APNs correspondant. L’IPA reste non signée.
+
+## Vérification visuelle finale
+
+Aperçu des composants React Native existants avec services et audio simulés : formats 320 × 568, 360 × 800, 393 × 720 et 430 × 932. Vérifiés : panneau ouvert, réduit, masqué, réouverture et plein écran. Le plafonnement de hauteur du panneau compact coupait ses commandes à 320 px ; corrigé pour laisser le contenu déterminer sa hauteur, avec défilement limité aux réglages avancés.
+
+Les gestes tactiles, l’écoute réelle, le microphone et la réception push nécessitent encore des essais sur téléphones physiques. Aucun essai physique n’est revendiqué.
+
+Le suivi Supabase a été vérifié : RLS active, absence d’accès direct client et anonyme au diagnostic, deux fonctions d’envoi instrumentées et collecte cron réussie. Le collecteur ignore correctement une file de receipts vide.

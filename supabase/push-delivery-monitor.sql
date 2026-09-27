@@ -58,7 +58,7 @@ begin
  end loop;
  select jsonb_build_object('ids',jsonb_agg(ticket_id)) into payload from
  (select ticket_id from private.push_delivery_log where status='ticket_ok' and updated_at<now()-interval '2 minutes' order by created_at limit 100) pending;
- if payload->'ids' is not null then
+ if jsonb_typeof(payload->'ids')='array' then
   req:=net.http_post(url:='https://exp.host/--/api/v2/push/getReceipts',body:=payload,headers:='{"Content-Type":"application/json"}'::jsonb);
   update private.push_delivery_log set status='receipt_pending',receipt_request_id=req,receipt_attempts=receipt_attempts+1,updated_at=now() where status='ticket_ok' and ticket_id in (select jsonb_array_elements_text(payload->'ids'));
  end if;
