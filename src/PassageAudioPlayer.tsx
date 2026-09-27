@@ -30,7 +30,7 @@ export function PassageAudioPlayer({sessionRange,page,command,onVerseChange,full
 
 function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setDock}:ControlsProps){
   // Own the player so cleanup runs before release when the reader closes.
-  const [player]=useState(()=>createAudioPlayer(null,{updateInterval:100}));
+  const [player]=useState(()=>createAudioPlayer(null,{updateInterval:100,keepAudioSessionActive:true}));
   const onVerseChangeRef=useRef(onVerseChange);
   onVerseChangeRef.current=onVerseChange;
   const [selection,setSelection]=useState<Selection>('session');
@@ -108,8 +108,11 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
     const subscription=player.addListener('playbackStatusUpdate',status=>{
       if(status.error){isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
       if(finishGuard.current&&status.isLoaded&&status.playing&&!status.didJustFinish)finishGuard.current=false;
+      // Some native file endings report the final position without didJustFinish.
+      // Buffering or a manual pause must never advance the selected passage.
+      const fileFinished=!timelineRef.current&&status.isLoaded&&!status.isBuffering&&status.duration>0&&status.currentTime>=status.duration-0.02;
       const segmentFinished=segmentEndRef.current!==null&&status.isLoaded&&status.playing&&status.currentTime>=segmentEndRef.current;
-      if(!(status.didJustFinish||segmentFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
+      if(!(status.didJustFinish||segmentFinished||fileFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
       const position=positionRef.current;
       if(timelineRef.current&&(settingsRef.current.mode==='passage'||position.repetition>=Number(settingsRef.current.count))&&position.verseId<rangeRef.current.end){
         const nextTiming=timelineRef.current.verses[position.verseId+1];
