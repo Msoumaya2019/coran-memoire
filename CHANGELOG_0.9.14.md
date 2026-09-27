@@ -36,16 +36,17 @@ Quand une source continue manque ou échoue, le chemin existant par verset reste
 - `src/services/dailyContents.ts`
 - `src/services/dailyContentMedia.ts` (nouveau)
 - `supabase/daily-content-media.sql` (nouveau, appliqué)
-- `tests/audio.test.cjs`
+- `tests/audio.test.cjs`, `tests/continuous-player.test.cjs`
 - `app.json`, `package.json`, `pnpm-lock.yaml`
 - `README.md`, ce rapport
 
 ## Vérifications
 
 - TypeScript : sans erreur.
-- Tests automatisés : 50 réussis, dont répétitions 1/2/3/5/10, suivi continu, événements retardés et refus des timestamps incohérents.
+- Tests automatisés : 51 réussis (50 tests de la suite et un test d’intégration du lecteur), dont répétitions 1/2/3/5/10, suivi continu, événements retardés et refus des timestamps incohérents.
 - API réelle : timestamps valides pour les sourates 1, 2 et 114 des quatre sources continues ; HTTP 200 pour les six nouveaux récitateurs.
 - Supabase : bucket privé et policies vérifiés ; upload administrateur autorisé, upload sans droits refusé, fichiers de contenus inactifs invisibles ; données temporaires annulées par rollback.
+- Test d’intégration du lecteur : un seul remplacement de fichier pour 12 ayat joués en trois passages, aucun pause/play entre ayat, seek précis uniquement au début et aux répétitions, libération unique à la fermeture.
 - Aperçu SVG contrôlé avec les tailles réelles des icônes.
 
 Les tests sur téléphones physiques (écoute, transitions, galerie, sélecteur de fichier et upload effectif) restent à réaliser sur les builds. Les vérifications de sources, SQL et compilation ne remplacent pas ces tests. Aucun certificat APNs ou autre système audio n’a été remplacé.
