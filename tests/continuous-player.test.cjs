@@ -1,20 +1,20 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const core=require('./build/core/audio.js'),quran=require('./build/core/quran.js');
-function controls(mode='passage',fallbackReciter=null,repeatCount=3){
+function controls(mode='passage',fallbackReciter=null,repeatCount=3,options={}){
  const effects=[],changes=[],calls={replace:0,play:0,pause:0,seek:[],release:0};let listener;
- const player={replace(){calls.replace++;},play(){calls.play++;},pause(){calls.pause++;},seekTo(...args){calls.seek.push(args);return Promise.resolve();},setPlaybackRate(){},setActiveForLockScreen(){},addListener(_,fn){listener=fn;return {remove(){listener=null;}};},release(){calls.release++;}};
- const React={createElement:(type,props,...children)=>({type,props:props||{},children}),Fragment:'fragment',useState:initial=>[initial===core.defaultReciter&&fallbackReciter?fallbackReciter:initial==='passage'?mode:initial===3?repeatCount:typeof initial==='function'?initial():initial,()=>{}],useRef:initial=>({current:initial}),useEffect:fn=>effects.push(fn),useMemo:fn=>fn()};
+ const player={replace(){calls.replace++;},play(){calls.play++;},pause(){calls.pause++;},seekTo(...args){calls.seek.push(args);return options.seek?options.seek():Promise.resolve();},setPlaybackRate(){},setActiveForLockScreen(){},addListener(_,fn){listener=fn;return {remove(){listener=null;}};},release(){calls.release++;}};
+ const React={createElement:(type,props,...children)=>({type,props:props||{},children}),Fragment:'fragment',useState:initial=>[initial===core.defaultReciter&&fallbackReciter?fallbackReciter:initial==='passage'?mode:initial===3?repeatCount:initial===0&&options.gap?options.gap:typeof initial==='function'?initial():initial,()=>{}],useRef:initial=>({current:initial}),useEffect:fn=>effects.push(fn),useMemo:fn=>fn()};
  const ui=Object.fromEntries(['Button','Choice','Field','Label'].map(name=>[name,name]));ui.colors={};
  const native=Object.fromEntries(['KeyboardAvoidingView','Pressable','ScrollView','Text','View'].map(name=>[name,name]));native.Platform={OS:'ios'};native.PanResponder={create:()=>({panHandlers:{}})};native.LayoutAnimation={configureNext(){},Presets:{easeInEaseOut:{}}};
  const exports={};const code=ts.transpileModule(fs.readFileSync('src/PassageAudioPlayer.tsx','utf8')+'\nexport {PassageAudioControls};',{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
  const timeline={url:'https://example.com/chapter.mp3',verses:{5:{start:10,end:11},6:{start:11,end:12},7:{start:12,end:13},8:{start:13,end:14}}};
  const timers=new Map();
- vm.runInNewContext(code,{exports,console,Promise,setTimeout:(fn,delay)=>{timers.set(fn,delay);return fn;},clearTimeout:fn=>timers.delete(fn),require(name){
+ vm.runInNewContext(code,{exports,console:options.console??console,Promise,setTimeout:(fn,delay)=>{timers.set(fn,delay);return fn;},clearTimeout:fn=>timers.delete(fn),require(name){
   return {'react':React,'react-native':native,'expo-audio':{setAudioModeAsync:()=>Promise.resolve(),preload:()=>Promise.resolve(),clearPreloadedSource(){}},'@react-native-async-storage/async-storage':{getItem:()=>Promise.resolve(null),setItem:()=>Promise.resolve()},'./services/audioFocus':{createManagedAudioPlayer:()=>player},'./services/quranAudioTimeline':{chapterAudio:()=>Promise.resolve(fallbackReciter?null:timeline)},'./core/audio':core,'./core/quran':quran,'./ui/theme':ui,'./ui/Premium':{Icon:'Icon'}}[name]??(()=>{throw Error(name)})();}});
- const tree=exports.PassageAudioControls({sessionRange:fallbackReciter?{start:1,end:7}:{start:5,end:8},page:1,dock:'expanded',setDock(){},onVerseChange:id=>changes.push(id)});
+ const tree=exports.PassageAudioControls({sessionRange:options.range??(fallbackReciter?{start:1,end:7}:{start:5,end:8}),page:1,dock:'expanded',setDock(){},onVerseChange:id=>changes.push(id)});
  const cleanups=effects.map(fn=>fn()).filter(fn=>typeof fn==='function');
- function find(node,label){if(!node||typeof node!=='object')return null;if(Array.isArray(node)){for(const child of node){const found=find(child,label);if(found)return found;}return null;}if(node.type==='Button'&&node.children.includes(label))return node;return find(node.children,label);}
- return {begin:()=>find(tree,'▶ Lancer ce passage').props.onPress(),emit:(time,extra={})=>listener({isLoaded:true,playing:true,didJustFinish:false,currentTime:time,...extra}),calls,changes,advanceGap:()=>{for(const [fn,delay] of timers)if(delay===core.DEFAULT_AYAH_GAP){timers.delete(fn);fn();}},close:()=>cleanups.forEach(fn=>fn())};
+ function find(node,label){if(!node||typeof node!=='object')return null;if(Array.isArray(node)){for(const child of node){const found=find(child,label);if(found)return found;}return null;}if(node.props?.accessibilityLabel===label||(node.type==='Button'&&node.children.includes(label)))return node;return find(node.children,label);}
+ return {press:label=>find(tree,label).props.onPress(),timers,begin:()=>find(tree,'▶ Lancer ce passage').props.onPress(),emit:(time,extra={})=>listener({isLoaded:true,playing:true,didJustFinish:false,currentTime:time,...extra}),calls,changes,advanceGap:()=>{for(const [fn,delay] of timers)if(delay===core.DEFAULT_AYAH_GAP_MS){timers.delete(fn);fn();}},close:()=>cleanups.forEach(fn=>fn())};
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 for(const mode of ['passage','each-verse'])test(`pause technique entre chaque fichier et répétition (${mode})`,async()=>{
@@ -47,4 +47,67 @@ for(const count of [2,5,10,'continuous'])test(`la pause technique couvre ×${cou
  for(let i=0;i<passes*4;i++){c.emit(1,{duration:5});c.emit(5,{duration:5,playing:false});await settle();c.advanceGap();await settle();}
  const played=c.changes.filter(id=>id!==null);assert.deepEqual(played.slice(0,passes*4),Array.from({length:passes},()=>[5,6,7,8]).flat());
  c.close();const before=c.calls.play;c.advanceGap();await settle();assert.equal(c.calls.play,before,'fermer annule la transition en attente');
+});
+
+
+function finish(c){c.emit(1,{duration:5});c.emit(5,{duration:5,playing:false});}
+for(const mode of ['each-verse','passage'])for(const count of [1,3,5])test(`As Saffat 3–5 ×${count} ${mode} : ordre automatique`,async()=>{
+ const start=quran.verseId(37,3),end=quran.verseId(37,5);
+ const c=controls(mode,null,count,{range:{start,end}});c.begin();await settle();
+ const expected=mode==='each-verse'?[start,start+1,end].flatMap(id=>Array(count).fill(id)):Array.from({length:count},()=>[start,start+1,end]).flat();
+ for(const id of expected){finish(c);await settle();c.advanceGap();await settle();}
+ assert.deepEqual(c.changes.filter(x=>x!==null),expected);c.close();
+});
+test('200 ms sont conservées à 0s ; 2s ne deviennent pas 2,2s',async()=>{
+ assert.equal(core.DEFAULT_AYAH_GAP_MS,200);
+ for(const gap of [0,2,5,10]){
+  const c=controls('each-verse',null,3,{gap});c.begin();await settle();finish(c);await settle();
+  assert.ok([...c.timers.values()].includes(Math.max(200,gap*1000)));c.close();
+ }
+});
+test('Pause durant la micro-pause conserve la répétition, Play reprend automatiquement',async()=>{
+ const c=controls('each-verse');c.begin();await settle();finish(c);await settle();
+ c.press('Lecture');const played=c.calls.play;c.advanceGap();await settle();assert.equal(c.calls.play,played);
+ c.press('Lecture');c.advanceGap();await settle();assert.equal(c.calls.play,played+1);
+ assert.deepEqual(c.changes.filter(x=>x!==null),[5,5]);c.close();
+});
+test('Arrêt pendant les 200 ms annule définitivement la répétition',async()=>{
+ const c=controls('each-verse');c.begin();await settle();finish(c);await settle();c.press('Arrêter la lecture');const played=c.calls.play;
+ c.advanceGap();await settle();assert.equal(c.calls.play,played);c.close();
+});
+test('Suivant annule la répétition en attente et remet son compteur à 1',async()=>{
+ const c=controls('each-verse');c.begin();await settle();finish(c);await settle();c.press('Verset suivant');await settle();c.advanceGap();await settle();
+ assert.deepEqual(c.changes.filter(x=>x!==null),[5,6]);c.close();
+});
+test('une source ne peut pas être remplacée pendant un seek natif en attente',async()=>{
+ let resolveSeek;const c=controls('each-verse',null,3,{seek:()=>new Promise(resolve=>resolveSeek=resolve)});
+ c.begin();await settle();finish(c);await settle();c.advanceGap();await settle();assert.ok(resolveSeek);
+ const before=c.calls.replace;c.press('Verset suivant');await settle();assert.equal(c.calls.replace,before);
+ resolveSeek();await settle();assert.deepEqual(c.changes.filter(x=>x!==null),[5,6]);c.close();
+});
+test('fermer pendant un seek attend son achèvement et ne relance jamais le player',async()=>{
+ let resolveSeek;const c=controls('each-verse',null,3,{seek:()=>new Promise(resolve=>resolveSeek=resolve)});
+ c.begin();await settle();finish(c);await settle();c.advanceGap();await settle();const played=c.calls.play;
+ c.close();assert.equal(c.calls.release,0);resolveSeek();await settle();assert.equal(c.calls.release,1);assert.equal(c.calls.play,played);
+});
+test('une erreur native indique précisément seekTo et son contexte',async()=>{
+ const errors=[];const c=controls('each-verse',null,3,{seek:()=>Promise.reject(new Error('Exception in HostFunction: <unknown>')),console:{...console,error:(...args)=>errors.push(args)}});
+ c.begin();await settle();finish(c);await settle();c.advanceGap();await settle();
+ assert.equal(errors[0][1].operation,'seekTo');assert.equal(errors[0][1].repeatIndex,2);assert.equal(errors[0][1].ayah,5);c.close();
+});
+test('∞ Chaque verset reste sur le même verset jusqu’à une action',async()=>{
+ const c=controls('each-verse',null,'continuous');c.begin();await settle();for(let i=0;i<8;i++){finish(c);await settle();c.advanceGap();await settle();}
+ assert.ok(c.changes.filter(x=>x!==null).every(x=>x===5));c.press('Arrêter la lecture');const played=c.calls.play;c.advanceGap();await settle();assert.equal(c.calls.play,played);c.close();
+});
+
+test('Pause puis Play pendant un seek ne produit aucune lecture obsolète',async()=>{
+ let resolveSeek;const c=controls('each-verse',null,3,{seek:()=>new Promise(resolve=>resolveSeek=resolve)});
+ c.begin();await settle();finish(c);await settle();c.advanceGap();await settle();const before=c.calls.play;
+ c.press('Lecture');resolveSeek();await settle();assert.equal(c.calls.play,before);
+ c.press('Lecture');for(const [fn,delay] of c.timers)if(delay===0){c.timers.delete(fn);fn();}await settle();
+ resolveSeek();await settle();assert.equal(c.calls.play,before+1);c.close();
+});
+test('invalidation de session empêche les anciens événements de fin de relancer',async()=>{
+ const c=controls('each-verse');c.begin();await settle();finish(c);await settle();const before=c.calls.play;
+ c.press('Arrêter la lecture');c.emit(5,{duration:5,didJustFinish:true});c.advanceGap();await settle();assert.equal(c.calls.play,before);c.close();
 });

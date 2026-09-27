@@ -7,7 +7,7 @@ export const reciters = [
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
 ] as const;
 export const defaultReciter=reciters[3];
-export const DEFAULT_AYAH_GAP=650;
+export const DEFAULT_AYAH_GAP_MS=200;
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';
@@ -53,6 +53,7 @@ export function nextAudioPosition(range:Range,current:AudioPosition,mode:RepeatM
   const unlimited=count==='continuous'||!autoStop;
   const limit=count==='continuous'?1:Math.max(1,Math.floor(count));
   if(mode==='each-verse'){
+    if(count==='continuous')return {verseId:current.verseId,repetition:current.repetition+1};
     if(current.repetition<limit)return {verseId:current.verseId,repetition:current.repetition+1};
     if(current.verseId<range.end)return {verseId:current.verseId+1,repetition:1};
     return unlimited?{verseId:range.start,repetition:1}:null;
