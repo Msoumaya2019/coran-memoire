@@ -1,3 +1,4 @@
+import {cleanUnusedContentMedia} from './dailyContentMedia';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {supabase} from './sync';
 export type ContentType='reminder'|'invocation';
@@ -15,7 +16,7 @@ export async function cachedDayContents():Promise<DailyContent[]>{try{return JSO
 export async function categories(admin=false):Promise<ContentCategory[]>{let q=db().from('content_categories').select('id,name,icon,type,display_order,is_active').order('display_order').order('name');if(!admin)q=q.eq('is_active',true);return checked(await q)??[];}
 export async function contents(type:ContentType,category?:string,offset=0,admin=false):Promise<DailyContent[]>{let q=db().from('daily_contents').select('*').eq('type',type).order('created_at',{ascending:false}).range(offset,offset+29);if(!admin)q=q.eq('is_active',true);if(category)q=q.eq('category_id',category);return checked(await q)??[];}
 export async function saveContent(content:DailyContent){const {created_at,updated_at,...values}=content;checked(await db().from('daily_contents').upsert({...values,updated_at:new Date().toISOString()},{onConflict:'id'}));contentChanged();}
-export async function deleteContent(id:string){checked(await db().from('daily_contents').delete().eq('id',id));contentChanged();}
+export async function deleteContent(id:string){const old=await getContent(id);checked(await db().from('daily_contents').delete().eq('id',id));contentChanged();await cleanUnusedContentMedia([old?.image_url??null,old?.audio_url??null]);}
 export async function saveCategory(category:ContentCategory){checked(await db().from('content_categories').upsert(category));contentChanged();}
 export async function deleteCategory(id:string){checked(await db().from('content_categories').delete().eq('id',id));contentChanged();}
 export async function schedules():Promise<Schedule[]>{return checked(await db().from('daily_content_schedule').select('content_id,type,display_date').gte('display_date',localDate()).order('display_date'))??[];}

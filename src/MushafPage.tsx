@@ -9,17 +9,16 @@ import tajweedDimensionsRaw from './data/mushaf-tajweed-dimensions.json';
 import {frenchVerse,tajweedColor,tajweedSpans,verseAtImagePoint} from './core/readerData';
 import {pageRange,Range,surahs,verseAt,verseId} from './core/quran';
 
-type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;masked:boolean;revealed:number|null;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
+type Props={page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
 const bounds=boundsRaw as Record<string,number[][]>;
 
-export function MushafPage({page,width,height,mode,language,playingVerseId,difficultyIds=[],sessionRange,showSession,masked,revealed,onVerseLongPress,onBlankLongPress,onTap}:Props){
+export function MushafPage({page,width,height,mode,language,playingVerseId,difficultyIds=[],sessionRange,showSession,onVerseLongPress,onBlankLongPress,onTap}:Props){
   const colorPage=mode==='tajweedPages';
   const [sourceWidth,sourceHeight]=colorPage?(tajweedDimensionsRaw as Record<string,number[]>)[String(page)]:[1920,3106];
   const rows=(colorPage?tajweedBoundsRaw as Record<string,number[][]>:bounds)[String(page)]??[];
   const range=pageRange(page);
   const ids=Array.from({length:range.end-range.start+1},(_,index)=>range.start+index);
   const verseSelected=(id:number)=>id===playingVerseId||(showSession&&id>=sessionRange.start&&id<=sessionRange.end);
-  if(masked)return <Pressable onPress={onTap} style={{width,height,backgroundColor:colors.paper,borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:20,alignItems:'center',justifyContent:'center'}}><Label style={{color:colors.gold,fontSize:25}}>۞</Label><Label style={{color:colors.muted,textAlign:'center',marginTop:14}}>Récite les versets de mémoire.</Label>{revealed!==null&&ids.includes(revealed)&&<Label style={{fontSize:25,lineHeight:48,textAlign:'center',writingDirection:'rtl',marginTop:25}}>{verseAt(revealed).text} ۞</Label>}</Pressable>;
   if(language==='fr'||mode==='tajweed')return <View style={{width,minHeight:height,backgroundColor:colors.paper,borderWidth:2,borderColor:colors.beige,borderRadius:9,padding:16}}>
     <Label style={{textAlign:'center',color:colors.gold,fontSize:13,marginBottom:12}}>{language==='fr'?'Traduction française du sens des versets':`Lecture simplifiée · page ${page}`}</Label>
     {ids.map(id=>{const verse=verseAt(id),translation=frenchVerse(id),spans=language==='ar'?tajweedSpans(id):[];const difficult=difficultyIds.includes(id);return <Pressable key={id} onLongPress={()=>onVerseLongPress(id)} delayLongPress={450} onPress={onTap} style={{padding:10,marginBottom:8,borderRadius:12,backgroundColor:difficult?'#FCE8E8':verseSelected(id)?colors.selected:colors.paper,borderWidth:difficult||verseSelected(id)?1:0,borderColor:difficult?'#D97878':colors.green2}}>

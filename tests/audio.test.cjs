@@ -37,9 +37,22 @@ test('le lecteur nomme séparément la sourate et le verset',()=>{
   assert.equal(verseAudioLabel(verseId(114,1)),'sourate 114, verset 1');
 });
 
-test('seuls les trois récitateurs Hafs retenus sont proposés',async()=>{
-  assert.deepEqual(reciters.map(r=>r.name),['Mahmoud Khalil Al-Husary','Mishary Rashid Alafasy','Mohammed Siddiq Al-Minshawi']);
-  for(const reciter of reciters)assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciter),{
-    url:`https://cdn.islamic.network/quran/audio/128/${reciter.id}/${verseId(114,1)}.mp3`,
-  });
+test('les récitateurs ajoutés conservent les trois choix historiques',async()=>{
+  assert.equal(reciters.length,9);
+  assert.deepEqual(reciters.slice(0,3).map(r=>r.name),['Mahmoud Khalil Al-Husary','Mishary Rashid Alafasy','Mohammed Siddiq Al-Minshawi']);
+  for(const reciter of reciters)assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciter),{url:verseAudioUrl(verseId(114,1),reciter)});
+  assert.equal(verseAudioUrl(verseId(114,1),reciters.find(r=>r.id==='everyayah.dussary')),'https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/114001.mp3');
+});
+const {parseChapterAudio,continuousAudioPosition}=require('./build/core/audio.js');
+const file={audio_url:'https://example.com/1.mp3',timestamps:Array.from({length:7},(_,i)=>({verse_key:`1:${i+1}`,timestamp_from:i*1000,timestamp_to:(i+1)*1000}))};
+test('suivi continu rattrape les événements retardés sans dépasser la sélection',()=>{
+ const timeline=parseChapterAudio(file,1),position={verseId:2,repetition:3};
+ assert.deepEqual(continuousAudioPosition(timeline,{start:2,end:5},position,4.2),{verseId:5,repetition:3});
+ assert.deepEqual(continuousAudioPosition(timeline,{start:2,end:5},position,1.9),position);
+ assert.deepEqual(continuousAudioPosition(timeline,{start:2,end:5},position,8),{verseId:5,repetition:3});
+});
+test('timestamps incomplets ou incohérents sont refusés',()=>{
+ assert.throws(()=>parseChapterAudio({...file,timestamps:file.timestamps.slice(1)},1));
+ assert.throws(()=>parseChapterAudio({...file,timestamps:[...file.timestamps,file.timestamps[0]]},1));
+ assert.throws(()=>parseChapterAudio({...file,timestamps:file.timestamps.map((t,i)=>i===2?{...t,timestamp_from:10}:t)},1));
 });

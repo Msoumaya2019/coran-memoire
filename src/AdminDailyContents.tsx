@@ -1,4 +1,5 @@
-import React,{useEffect,useState} from 'react';
+import {chooseAndUploadContentMedia,cleanUnusedContentMedia} from './services/dailyContentMedia';
+import React,{useEffect,useRef,useState} from 'react';
 import {Alert,ScrollView,Switch,View} from 'react-native';
 import {Button,Card,colors,Field,Label,Title} from './ui/theme';
 import {ContentCard,ContentTabs} from './DailyContentsScreen';
@@ -6,23 +7,30 @@ import * as service from './services/dailyContents';
 import {isSocialAdmin} from './services/social';
 const id=()=>'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return (c==='x'?r:(r&3)|8).toString(16);});
 export function AdminDailyContents({onClose}:{onClose:()=>void}){
- const [chooseCategory,setChooseCategory]=useState(false);
+ const uploaded=useRef<string[]>([]);
+ const cancelEdit=()=>{setEdit(null);setPreview(false);const pending=uploaded.current;uploaded.current=[];cleanUnusedContentMedia(pending).catch(e=>setNotice(String(e)));};
+ useEffect(()=>()=>{void cleanUnusedContentMedia(uploaded.current).catch(e=>console.warn('[Content media] Nettoyage des brouillons',e));},[]);
+ const [chooseCategory,setChooseCategory]=useState(false),[upload,setUpload]=useState<number|null>(null);
+ const attach=async(kind:'image'|'audio')=>{setBusy(true);setUpload(0);try{const url=await chooseAndUploadContentMedia(kind,setUpload);if(url){uploaded.current.push(url);update(kind==='image'?'image_url':'audio_url',url);}}catch(e){setNotice(e instanceof Error?e.message:String(e));}finally{setBusy(false);setUpload(null);}};
  const [type,setType]=useState<service.ContentType>('invocation'),[cats,setCats]=useState<service.ContentCategory[]>([]),[items,setItems]=useState<service.DailyContent[]>([]),[dates,setDates]=useState<service.Schedule[]>([]),[edit,setEdit]=useState<service.DailyContent|null>(null),[category,setCategory]=useState<service.ContentCategory|null>(null),[manage,setManage]=useState(false),[preview,setPreview]=useState(false),[date,setDate]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[offset,setOffset]=useState(0),[more,setMore]=useState(false);
  const load=async(append=false)=>{if(!await isSocialAdmin())throw new Error('Accès administrateur refusé.');const next=append?offset+30:0;const [c,r,s]=await Promise.all([service.categories(true),service.contents(type,undefined,next,true),service.schedules()]);setCats(c);setItems(old=>append?[...old,...r]:r);setDates(s);setOffset(next);setMore(r.length===30);};
  const act=async(fn:()=>Promise<unknown>)=>{setBusy(true);try{await fn();await load();setNotice('Enregistré.');}catch(e){setNotice(e instanceof Error?e.message:String(e));}finally{setBusy(false);}};
  useEffect(()=>{load().catch(e=>setNotice(String(e)));},[type]);
  const update=(key:keyof service.DailyContent,value:any)=>setEdit(current=>current?{...current,[key]:value}:null);
- const save=()=>act(async()=>{if(!edit)return;if(!edit.category_id||!edit.french_text.trim()||!edit.source.trim()||edit.type==='invocation'&&(!edit.arabic_text?.trim()||!edit.phonetic_text?.trim()))throw new Error('Renseigne la catégorie et tous les champs obligatoires.');for(const url of [edit.audio_url,edit.image_url])if(url&&!/^https:\/\/\S+$/.test(url))throw new Error('Les fichiers doivent utiliser une URL HTTPS valide.');if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('Date : AAAA-MM-JJ.');await service.saveContentAndSchedule(edit,date);setEdit(null);setPreview(false);});
- return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:50}}><Button secondary onPress={onClose}>‹ Administration</Button><Title>Rappels & Invocations</Title>{!!notice&&<Card><Label>{notice}</Label></Card>}
- <ContentTabs type={type} onChange={t=>{setEdit(null);setType(t);}} />
- {edit?<><Button secondary onPress={()=>{setEdit(null);setPreview(false);}}>Annuler</Button>{preview?<ContentCard item={edit} preview />:<Card>
+ const save=()=>act(async()=>{if(!edit)return;if(!edit.category_id||!edit.french_text.trim()||!edit.source.trim()||edit.type==='invocation'&&(!edit.arabic_text?.trim()||!edit.phonetic_text?.trim()))throw new Error('Renseigne la catégorie et tous les champs obligatoires.');for(const url of [edit.audio_url,edit.image_url])if(url&&!/^https:\/\/\S+$/.test(url))throw new Error('Les fichiers doivent utiliser une URL HTTPS valide.');if(date&&!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new Error('Date : AAAA-MM-JJ.');const old=await service.getContent(edit.id);await service.saveContentAndSchedule(edit,date);await cleanUnusedContentMedia([...uploaded.current,old?.image_url??null,old?.audio_url??null]);uploaded.current=[];setEdit(null);setPreview(false);});
+ return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:18,paddingBottom:50}}><Button secondary disabled={busy} onPress={onClose}>‹ Administration</Button><Title>Rappels & Invocations</Title>{!!notice&&<Card><Label>{notice}</Label></Card>}
+ <ContentTabs type={type} onChange={t=>{if(!busy){cancelEdit();setType(t);}}} />
+ {edit?<><Button secondary disabled={busy} onPress={cancelEdit}>Annuler</Button>{preview?<ContentCard item={edit} preview />:<Card>
  <Label>Catégorie *</Label><Button small secondary onPress={()=>setChooseCategory(!chooseCategory)}>{cats.find(c=>c.id===edit.category_id)?.name??'Choisir une catégorie'} ⌄</Button>{chooseCategory&&cats.filter(c=>c.type===type).map(c=><Button key={c.id} small secondary={edit.category_id!==c.id} onPress={()=>{update('category_id',c.id);setChooseCategory(false);}}>{c.icon} {c.name}{c.is_active?'':' · inactive'}</Button>)}{!cats.some(c=>c.type===type)&&<><Label>Crée d’abord une catégorie pour ce type de contenu.</Label><Button secondary onPress={()=>{setEdit(null);setManage(true);}}>Gérer les catégories</Button></>}
  <Field placeholder="Titre (facultatif)" value={edit.title??''} onChangeText={v=>update('title',v||null)} />
  {type==='invocation'&&<><Label>Arabe *</Label><Field multiline placeholder="Texte arabe" value={edit.arabic_text??''} onChangeText={v=>update('arabic_text',v)} /><Field placeholder="Phonétique *" value={edit.phonetic_text??''} onChangeText={v=>update('phonetic_text',v)} /></>}
  <Field multiline placeholder={type==='invocation'?'Traduction française *':'Texte du rappel *'} value={edit.french_text} onChangeText={v=>update('french_text',v)} />
  {type==='reminder'&&<><Field multiline placeholder="Explication courte (facultative)" value={edit.explanation??''} onChangeText={v=>update('explanation',v||null)} /></>}
+ <Button secondary disabled={busy} onPress={()=>void attach('image')}>Choisir une image dans ma galerie</Button>
  <Field placeholder="Petite image : URL HTTPS (facultative)" value={edit.image_url??''} onChangeText={v=>update('image_url',v||null)} />
  <Field placeholder="Source fiable *" value={edit.source} onChangeText={v=>update('source',v)} /><Field placeholder="Référence (facultative)" value={edit.reference??''} onChangeText={v=>update('reference',v||null)} />
+ {type==='invocation'&&<Button secondary disabled={busy} onPress={()=>void attach('audio')}>Choisir un fichier audio</Button>}
+ {upload!==null&&<View accessibilityLabel="Téléversement en cours"><Label>{upload<1?'Téléversement…':'Fichier téléversé'}</Label><View style={{height:6,borderRadius:3,backgroundColor:colors.line,marginVertical:8}}><View style={{height:6,borderRadius:3,backgroundColor:colors.green2,width:`${upload*100}%`}} /></View></View>}
  <Field placeholder="Audio MP3/M4A/AAC : URL HTTPS (facultative)" value={edit.audio_url??''} onChangeText={v=>update('audio_url',v||null)} />
  <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Label>Actif</Label><Switch value={edit.is_active} onValueChange={v=>update('is_active',v)} /></View>
  <Label>Programmer comme contenu du jour (facultatif)</Label><Field placeholder="AAAA-MM-JJ" value={date} onChangeText={setDate} />
