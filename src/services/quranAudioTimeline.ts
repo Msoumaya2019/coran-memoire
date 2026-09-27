@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Reciter,parseChapterAudio,ChapterAudio} from '../core/audio';
 export type {ChapterAudio} from '../core/audio';
-import {verseAt} from '../core/quran';
+import {verseAt,surahs} from '../core/quran';
 const chapterIds:Record<string,number>={'ar.husary':6,'ar.alafasy':7,'ar.minshawi':9,'ar.shaatree':4};
 const requests=new Map<string,Promise<ChapterAudio|null>>();
 const unavailableUntil=new Map<string,number>();
@@ -11,7 +11,7 @@ export async function chapterAudio(id:number,reciter:Reciter):Promise<ChapterAud
  if((unavailableUntil.get(key)??0)>Date.now())return null;
  if(requests.has(key))return requests.get(key)!;
  const request=(async()=>{
-  const cached=await AsyncStorage.getItem(key);if(cached)return JSON.parse(cached) as ChapterAudio;
+  const cached=await AsyncStorage.getItem(key);if(cached){const value=JSON.parse(cached) as ChapterAudio;const timings=Object.values(value.verses??{});if(value.url?.startsWith('https://')&&value.verses?.[id]&&timings.length===surahs[chapter-1].count&&timings.every(t=>Number.isFinite(t.start)&&Number.isFinite(t.end)&&t.end>t.start))return value;await AsyncStorage.removeItem(key);}
   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
   try{
    const response=await fetch(`https://api.quran.com/api/v4/chapter_recitations/${resource}/${chapter}?segments=true`,{signal:controller.signal});
