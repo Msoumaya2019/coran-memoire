@@ -11,10 +11,12 @@
     "test": "node node_modules/typescript/bin/tsc src/core/quran.ts src/core/program.ts src/core/review.ts src/core/pageNavigation.ts src/core/readerLayout.ts src/core/audio.ts src/core/readerData.ts src/core/ayahMarker.ts --ignoreConfig --module commonjs --target es2022 --moduleResolution node --resolveJsonModule --esModuleInterop --outDir tests/build --ignoreDeprecations 6.0 --skipLibCheck && node --test tests/*.test.cjs"
   },
   "dependencies": {
+    "@expo/vector-icons": "15.0.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@supabase/supabase-js": "^2.116.0",
     "expo": "~57.0.24",
     "expo-audio": "~57.0.5",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
     "expo-document-picker": "~57.0.2",
     "expo-file-system": "~57.0.7",
@@ -30,7 +32,10 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.18",
+    "esbuild": "^0.28.2",
     "quran-meta": "6.0.17",
+    "react-dom": "19.2.3",
+    "react-native-web": "~0.21.3",
     "typescript": "~6.0.3"
   }
 }

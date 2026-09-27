@@ -5,7 +5,7 @@ import pagesRaw from '../data/pages.json';
 export type Range = { start: number; end: number };
 export type Verse = { surah: number; ayah: number; text: string };
 export type Division = Range & { number: number };
-export type Surah = { number: number; name: string; meaning: string; arabic: string; start: number; end: number; count: number };
+export type Surah = { number: number; name: string; meaning: string; arabic: string; start: number; end: number; count: number; isMeccan?: boolean };
 export const verses = versesRaw as Verse[];
 export const surahs = metaRaw.surahs as Surah[];
 export const juzs = metaRaw.juzs as Division[];

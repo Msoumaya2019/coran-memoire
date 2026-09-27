@@ -5,11 +5,6 @@ export const reciters = [
   {id:'ar.alafasy',name:'Mishary Rashid Alafasy',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.minshawi',name:'Mohammed Siddiq Al-Minshawi',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
-  {id:'everyayah.ghamdi',name:'Saad Al-Ghamdi',reading:'Hafs ‘an ‘Âsim',bitrate:40},
-  {id:'everyayah.qatami',name:'Nasser Al-Qatami',reading:'Hafs ‘an ‘Âsim',bitrate:128},
-  {id:'everyayah.budair',name:'Salah Al-Budair',reading:'Hafs ‘an ‘Âsim',bitrate:128},
-  {id:'everyayah.bukhatir',name:'Salah Boukhatir',reading:'Hafs ‘an ‘Âsim',bitrate:128},
-  {id:'everyayah.dussary',name:'Yassir Al-Doussari',reading:'Hafs ‘an ‘Âsim',bitrate:128},
 ] as const;
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
@@ -36,8 +31,6 @@ export function continuousAudioPosition(timeline:ChapterAudio,range:Range,positi
 
 export function verseAudioUrl(id:number,reciter:Reciter=reciters[0]):string{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset audio invalide.');
-  const folders:Record<string,string>={'everyayah.ghamdi':'Ghamadi_40kbps','everyayah.qatami':'Nasser_Alqatami_128kbps','everyayah.budair':'Salah_Al_Budair_128kbps','everyayah.bukhatir':'Salaah_AbdulRahman_Bukhatir_128kbps','everyayah.dussary':'Yasser_Ad-Dussary_128kbps'};
-  if(folders[reciter.id]){const v=verseAt(id);return `https://everyayah.com/data/${folders[reciter.id]}/${String(v.surah).padStart(3,'0')}${String(v.ayah).padStart(3,'0')}.mp3`;}
   return `https://cdn.islamic.network/quran/audio/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
 }
 

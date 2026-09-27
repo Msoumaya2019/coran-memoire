@@ -1,2 +1,4 @@
+allowBuilds:
+  esbuild: true
 minimumReleaseAgeExclude:
   - expo-image-picker@57.0.20

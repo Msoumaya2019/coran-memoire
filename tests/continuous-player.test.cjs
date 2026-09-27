@@ -43,7 +43,7 @@ test('répéter chaque ayah conserve aussi une transition continue vers l’ayah
  assert.equal(c.calls.replace,1);assert.equal(c.calls.play,9);assert.equal(c.calls.seek.length,9);c.close();
 });
 
-for(const reciter of core.reciters.filter(r=>r.id.startsWith('everyayah.')))test(`${reciter.name}: Al-Fatiha 1–7 avance sans événement natif de fin`,async()=>{
+for(const reciter of core.reciters)test(`${reciter.name}: Al-Fatiha 1–7 avance sans événement natif de fin`,async()=>{
  const c=controls('passage',reciter);c.begin();await settle();
  for(let pass=1;pass<=3;pass++)for(let verse=1;verse<=7;verse++){
   c.emit(1,{duration:5});

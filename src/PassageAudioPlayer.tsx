@@ -99,7 +99,7 @@ function PassageAudioControls({sessionRange,page,command,onVerseChange,dock,setD
     }catch(e){setError(e instanceof Error?e.message:'Passage invalide.');}
   };
   useEffect(()=>{
-    AsyncStorage.getItem('audio-reciter-hafs').then(id=>{const saved=reciters.find(item=>item.id===id);if(saved)setReciter(saved);}).catch(()=>{});
+    AsyncStorage.getItem('audio-reciter-hafs').then(async id=>{const saved=reciters.find(item=>item.id===id)??reciters[0];setReciter(saved);if(id&&id!==saved.id)await AsyncStorage.setItem('audio-reciter-hafs',saved.id);}).catch(()=>{});
     AsyncStorage.getItem('audio-repeat-preferences').then(raw=>{if(!raw)return;const prefs=JSON.parse(raw);if(counts.includes(prefs.countChoice))setCountChoice(prefs.countChoice);if(typeof prefs.customCount==='string')setCustomCount(prefs.customCount);if(prefs.repeatMode==='passage'||prefs.repeatMode==='each-verse')setRepeatMode(prefs.repeatMode);if([0,2,5,10].includes(prefs.gap))setGap(prefs.gap);if([0.75,1,1.25].includes(prefs.speed))setSpeed(prefs.speed);if(typeof prefs.autoStop==='boolean')setAutoStop(prefs.autoStop);}).catch(()=>{}).finally(()=>setPreferencesLoaded(true));
   },[]);
   useEffect(()=>{if(preferencesLoaded)AsyncStorage.setItem('audio-repeat-preferences',JSON.stringify({countChoice,customCount,repeatMode,gap,speed,autoStop})).catch(()=>{});},[preferencesLoaded,countChoice,customCount,repeatMode,gap,speed,autoStop]);

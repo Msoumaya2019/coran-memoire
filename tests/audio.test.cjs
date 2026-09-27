@@ -37,11 +37,10 @@ test('le lecteur nomme séparément la sourate et le verset',()=>{
   assert.equal(verseAudioLabel(verseId(114,1)),'sourate 114, verset 1');
 });
 
-test('les récitateurs ajoutés conservent les trois choix historiques',async()=>{
-  assert.equal(reciters.length,9);
+test('seuls les quatre récitateurs conservés sont proposés',async()=>{
+  assert.deepEqual(reciters.map(r=>r.id),['ar.husary','ar.alafasy','ar.minshawi','ar.shaatree']);
   assert.deepEqual(reciters.slice(0,3).map(r=>r.name),['Mahmoud Khalil Al-Husary','Mishary Rashid Alafasy','Mohammed Siddiq Al-Minshawi']);
   for(const reciter of reciters)assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciter),{url:verseAudioUrl(verseId(114,1),reciter)});
-  assert.equal(verseAudioUrl(verseId(114,1),reciters.find(r=>r.id==='everyayah.dussary')),'https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/114001.mp3');
 });
 const {parseChapterAudio,continuousAudioPosition}=require('./build/core/audio.js');
 const file={audio_url:'https://example.com/1.mp3',timestamps:Array.from({length:7},(_,i)=>({verse_key:`1:${i+1}`,timestamp_from:i*1000,timestamp_to:(i+1)*1000}))};
