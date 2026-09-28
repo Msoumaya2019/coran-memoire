@@ -15,7 +15,7 @@ export function CoranTestScreen({page,onPage,onClose,readerState,onVersePress,on
  current.current=page;
  useEffect(()=>{
    let alive=true;const neighbors=adjacentTestPages(page);
-   for(const target of neighbors)loadTestPage(target).then(html=>{if(alive)setPages(old=>Object.fromEntries(Object.entries({...old,[target]:html}).filter(([key])=>neighbors.includes(Number(key)))));}).catch(error=>{console.error('[Coran Test] font/page',target,error);if(alive&&target===page&&!errorShown.current){errorShown.current=true;Alert.alert('Coran Test','Impossible de charger la page originale.',[{text:'Retour',onPress:onClose}]);}});
+   for(const target of neighbors)loadTestPage(target).then(html=>{if(alive)setPages(old=>Object.fromEntries(Object.entries({...old,[target]:html}).filter(([key])=>neighbors.includes(Number(key)))));}).catch(error=>{console.error('[Coran avec règles de Tajwid] font/page',target,error);if(alive&&target===page&&!errorShown.current){errorShown.current=true;Alert.alert('Coran avec règles de Tajwid','Impossible de charger la page originale.',[{text:'Retour',onPress:onClose}]);}});
    if(readyPages.current.has(page))setDisplayPage(page);
    return()=>{alive=false;};
  },[page]);
@@ -34,7 +34,7 @@ export function CoranTestScreen({page,onPage,onClose,readerState,onVersePress,on
    }else if(data.type==='swipe'&&target===displayPage){
      if(Platform.OS==='ios'&&data.fromEdge&&data.dx>100){onClose();return;}
      const next=pageAfterSwipe(current.current,data.dx,data.dy);if(next!==current.current)onPage(next);
-   }else if(data.type==='error'&&!errorShown.current){errorShown.current=true;Alert.alert('Coran Test','La page n’a pas pu être affichée.',[{text:'Retour',onPress:onClose}]);}
+   }else if(data.type==='error'&&!errorShown.current){errorShown.current=true;Alert.alert('Coran avec règles de Tajwid','La page n’a pas pu être affichée.',[{text:'Retour',onPress:onClose}]);}
  };
  return <View style={{flex:1,backgroundColor:'#faf7f2'}}>{Object.entries(pages).map(([key,html])=>{const target=Number(key);return <View key={key} aria-hidden={target!==displayPage} pointerEvents={target===displayPage?'auto':'none'} accessibilityElementsHidden={target!==displayPage} importantForAccessibility={target===displayPage?'auto':'no-hide-descendants'} style={{position:'absolute',inset:0,opacity:target===displayPage?1:0}}><PageSurface html={html} readerState={readerState} onMessage={data=>receive(target,data)}/></View>;})}</View>;
 }

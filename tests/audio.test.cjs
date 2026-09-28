@@ -37,8 +37,8 @@ test('le lecteur nomme séparément la sourate et le verset',()=>{
   assert.equal(verseAudioLabel(verseId(114,1)),'sourate 114, verset 1');
 });
 
-test('seuls les quatre récitateurs conservés sont proposés',async()=>{
-  assert.deepEqual(reciters.map(r=>r.id),['ar.husary','ar.alafasy','ar.minshawi','ar.shaatree']);
+test('les récitateurs existants et les trois sources IPA sont proposés',async()=>{
+  assert.deepEqual(reciters.map(r=>r.id),['ar.husary','ar.alafasy','ar.minshawi','ar.shaatree','ar.ghamidi','ar.dussary','ar.qatami']);
   assert.deepEqual(reciters.slice(0,3).map(r=>r.name),['Mahmoud Khalil Al-Husary','Mishary Rashid Alafasy','Mohammed Siddiq Al-Minshawi']);
   for(const reciter of reciters)assert.deepEqual(await resolveAudioSegment(verseId(114,1),reciter),{url:verseAudioUrl(verseId(114,1),reciter)});
 });

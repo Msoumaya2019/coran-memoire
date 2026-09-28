@@ -6,9 +6,12 @@ export const reciters = [
   {id:'ar.alafasy',name:'Mishary Rashid Alafasy',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.minshawi',name:'Mohammed Siddiq Al-Minshawi',reading:'Hafs ‘an ‘Âsim',bitrate:128},
   {id:'ar.shaatree',name:'Abu Bakr Shatri',reading:'Hafs ‘an ‘Âsim',bitrate:128},
+  {id:'ar.ghamidi',name:'Saad Al Ghamidi',arabic:'سعد الغامدي',reading:'Hafs ‘an ‘Âsim',bitrate:40,verseFolder:'Ghamadi_40kbps'},
+  {id:'ar.dussary',name:'Yasser Al Dosari',arabic:'ياسر الدوسري',reading:'Hafs ‘an ‘Âsim',bitrate:128,verseFolder:'Yasser_Ad-Dussary_128kbps'},
+  {id:'ar.qatami',name:'Nasser Al Qatami',arabic:'ناصر القطامي',reading:'Hafs ‘an ‘Âsim',bitrate:128,verseFolder:'Nasser_Alqatami_128kbps'},
 ] as const;
 export const defaultReciter=reciters[3];
-export const DEFAULT_AYAH_GAP_MS=350;
+export const DEFAULT_AYAH_GAP_MS=200;
 export type Reciter=typeof reciters[number];
 export type RepeatMode = 'passage' | 'each-verse';
 export type RepeatCount = number | 'continuous';
@@ -34,6 +37,7 @@ export function continuousAudioPosition(timeline:ChapterAudio,range:Range,positi
 
 export function verseAudioUrl(id:number,reciter:Reciter=defaultReciter):string{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset audio invalide.');
+  if('verseFolder' in reciter){const verse=verseAt(id);return `https://everyayah.com/data/${reciter.verseFolder}/${String(verse.surah).padStart(3,'0')}${String(verse.ayah).padStart(3,'0')}.mp3`;}
   return `${ipaAudioSource.baseUrl}/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
 }
 

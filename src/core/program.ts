@@ -49,8 +49,14 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'tajweedPages',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+// Keep the original source key: old Coran Test preferences and bookmarks stay valid.
+export function migrateReaderState(state:AppState):AppState{
+  if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
+  return {...state,reader:{...state.reader,mushaf:'coranTest',followAudio:state.reader?.followAudio!==false}};
+}
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
+  local=migrateReaderState(local);if(remote)remote=migrateReaderState(remote);
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
   const reviewMetadataRecovered=(remote.reviewCycle===undefined&&!!local.reviewCycle)||(remote.reviewConsolidations===undefined&&Object.keys(local.reviewConsolidations??{}).length>0)||(remote.reviewPriorityDue===undefined&&Object.keys(local.reviewPriorityDue??{}).length>0);
@@ -65,22 +71,22 @@ export function reconcileState(local:AppState,remote:AppState|null):{state:AppSt
 }
 export function accountState(userId:string,cached:AppState|null,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   const local=cached?.userId===userId?cached:defaultState();
-  const safeRemote=remote?.userId&&remote.userId!==userId?null:remote;
-  if(cached?.userId!==userId&&safeRemote)return {state:{...safeRemote,userId},shouldPush:safeRemote.userId!==userId};
+  const safeRemote=remote?.userId&&remote.userId!==userId?null:remote?migrateReaderState(remote):null;
+  if(cached?.userId!==userId&&safeRemote)return {state:{...safeRemote,userId},shouldPush:safeRemote.userId!==userId||safeRemote!==remote};
   const result=reconcileState(local,safeRemote);
   const owned={...result.state,userId};
-  return {state:owned,shouldPush:result.shouldPush||result.state.userId!==userId};
+  return {state:owned,shouldPush:result.shouldPush||result.state.userId!==userId||safeRemote!==remote};
 }
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),userId:previous?.userId,bookmarks:previous?.bookmarks,audioPreferences:previous?.audioPreferences,profile:previous?.profile,theme:previous?.theme??'lilac',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'tajweedPages',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),userId:previous?.userId,bookmarks:previous?.bookmarks,audioPreferences:previous?.audioPreferences,profile:previous?.profile,theme:previous?.theme??'lilac',notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'coranTest',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
 export function addDays(key: string, days: number): string { const d=new Date(`${key}T12:00:00`);d.setDate(d.getDate()+days);return dateKey(d); }
 export function dayOf(key: string): number { return new Date(`${key}T12:00:00`).getDay(); }
-export function touch(state: AppState): AppState {return {...state,updatedAt:new Date().toISOString()};}
+export function touch(state: AppState): AppState {return {...migrateReaderState(state),updatedAt:new Date().toISOString()};}
 
 export function markKnowledge(state: AppState, range: Range, mastery: Mastery): AppState {
   const knowledge={...state.knowledge},memorizedAt={...state.memorizedAt},reviewDue={...state.reviewDue};

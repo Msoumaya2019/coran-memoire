@@ -58,11 +58,11 @@ for(const mode of ['each-verse','passage'])for(const count of [1,3,5])test(`As S
  for(const id of expected){finish(c);await settle();c.advanceGap();await settle();}
  assert.deepEqual(c.changes.filter(x=>x!==null),expected);c.close();
 });
-test('350 ms conservées et pause utilisateur sans double délai',async()=>{
- assert.equal(core.DEFAULT_AYAH_GAP_MS,350);
+test('200 ms conservées et pause utilisateur sans double délai',async()=>{
+ assert.equal(core.DEFAULT_AYAH_GAP_MS,200);
  for(const gap of [0,2,5,10]){
   const c=controls('each-verse',null,3,{gap});c.begin();await settle();finish(c);await settle();
-  assert.ok([...c.timers.values()].includes(Math.max(350,gap*1000)));c.close();
+  assert.ok([...c.timers.values()].includes(Math.max(200,gap*1000)));c.close();
  }
 });
 test('Pause durant la pause utilisateur conserve la répétition, Play reprend automatiquement',async()=>{
@@ -135,7 +135,7 @@ test('arrêt au timestamp sans attendre le prochain événement de suivi',async(
  const c=controls('each-verse',null,3,{timeline:true});c.begin();await settle();c.emit(10.95,{duration:20});
  const [deadline,delay]=[...c.timers].find(([,delay])=>delay>0&&delay<100);
  assert.ok(delay<=51);const before=c.calls.pause;c.setTime(11);c.timers.delete(deadline);deadline();
- assert.equal(c.calls.pause,before+1);assert.ok([...c.timers.values()].includes(350));
+ assert.equal(c.calls.pause,before+1);assert.ok([...c.timers.values()].includes(200));
  c.emit(11.09,{duration:20});c.advanceGap();await settle();assert.deepEqual(c.changes.filter(x=>x!==null),[5,5]);c.close();
 });
 test('une horloge bloquée par buffering ne déclenche pas la fin du verset',async()=>{
@@ -146,10 +146,10 @@ test('une horloge bloquée par buffering ne déclenche pas la fin du verset',asy
 test('Arrêt invalide aussi un ancien timer de frontière de verset',async()=>{
  const c=controls('each-verse',null,3,{timeline:true});c.begin();await settle();c.emit(10.95,{duration:20});
  const [deadline]=[...c.timers].find(([,delay])=>delay<100);c.press('Arrêter la lecture');const before=c.calls.play;c.setTime(11);deadline();
- c.advanceGap();await settle();assert.equal(c.calls.play,before);assert.ok(![...c.timers.values()].includes(350));c.close();
+ c.advanceGap();await settle();assert.equal(c.calls.play,before);assert.ok(![...c.timers.values()].includes(200));c.close();
 });
 test('Pause annule le timer de frontière sans lancer le verset suivant',async()=>{
  const c=controls('passage',null,1,{timeline:true});c.begin();await settle();c.emit(10.95,{duration:20});
  const [deadline]=[...c.timers].find(([,delay])=>delay<100);c.press('Lecture');c.setTime(11);deadline();await settle();
- assert.deepEqual(c.changes.filter(x=>x!==null),[5]);assert.ok(![...c.timers.values()].includes(350));c.close();
+ assert.deepEqual(c.changes.filter(x=>x!==null),[5]);assert.ok(![...c.timers.values()].includes(200));c.close();
 });
