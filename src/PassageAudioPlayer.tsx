@@ -66,10 +66,11 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   const transitionQueue=useRef<Promise<void>>(Promise.resolve());
   const transitioningRef=useRef(false),armedRequestRef=useRef(0);
   const lastStatusRef=useRef({isLoaded:false,playing:false,currentTime:0,duration:0});
-  const debug=(event:string,details:object={})=>{if(typeof __DEV__!=='undefined'&&__DEV__)console.log(`[AUDIO] ${event}`,{ayah:positionRef.current?.verseId,repeatIndex:positionRef.current?.repetition,session:requestRef.current,...details});};
+  const debug=(event:string,details:object={})=>{if(typeof __DEV__!=='undefined'&&__DEV__)console.log(`[AUDIO] ${event}`,{ayah:positionRef.current?.verseId,repeatIndex:positionRef.current?.repetition,session:requestRef.current,playerState:lastStatusRef.current,...details});};
   const nativeOperation=async <T,>(operation:string,work:()=>T|Promise<T>):Promise<T>=>{
     try{return await work();}catch(error){console.error('[AUDIO ERROR]',{operation,ayah:positionRef.current?.verseId,repeatIndex:positionRef.current?.repetition,repeatCount:settingsRef.current.count,isAudioTransitioning:transitioningRef.current,playbackSessionId:requestRef.current,playerState:lastStatusRef.current,error,stack:error instanceof Error?error.stack:undefined});throw new Error(`${operation} : ${error instanceof Error?error.message:String(error)}`,{cause:error});}
   };
+  const loadedSegmentRef=useRef<{verseId:number;reciterId:string;url:string;startSeconds?:number;endSeconds?:number}|null>(null);
   const preloaded=useRef(new Set<string>());
   const [progress,setProgress]=useState({time:0,duration:0});
   const progressAt=useRef(0);
@@ -94,7 +95,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
     },Math.max(1,Math.ceil(remaining)));
   };
   const clearPause=()=>{if(timerRef.current){clearTimeout(timerRef.current);timerRef.current=null;}};
-  const scheduleNext=(next:AudioPosition,wait:number)=>{const continuation=pendingContinuationRef.current;const session=requestRef.current;pendingWaitRef.current=wait;gapDeadlineRef.current=Date.now()+wait;timerRef.current=setTimeout(()=>{timerRef.current=null;if(mountedRef.current&&session===requestRef.current){if(continuation)resumeContinuous(next);else startAt(next);}},wait);};
+  const scheduleNext=(next:AudioPosition,wait:number)=>{clearPause();const continuation=pendingContinuationRef.current;const session=requestRef.current;pendingWaitRef.current=wait;gapDeadlineRef.current=Date.now()+wait;timerRef.current=setTimeout(()=>{timerRef.current=null;if(mountedRef.current&&session===requestRef.current){if(continuation)resumeContinuous(next);else startAt(next);}},wait);};
   const clearCollapse=()=>{if(collapseRef.current){clearTimeout(collapseRef.current);collapseRef.current=null;}};
   const collapseSoon=()=>{if(compact||collapseRef.current)return;collapseRef.current=setTimeout(()=>{collapseRef.current=null;setDock('mini');},3500);};
   const stop=()=>{requestRef.current++;clearBoundary();clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
@@ -125,14 +126,16 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
     const task=transitionQueue.current.then(async()=>{
       if(!mountedRef.current||request!==requestRef.current)return;
       transitioningRef.current=true;
-      const timeline=await chapterAudio(position.verseId,selectedReciter);
+      const loaded=loadedSegmentRef.current;
+      const replay=loaded?.verseId===position.verseId&&loaded.reciterId===selectedReciter.id&&sourceRef.current===loaded.url;
+      const timeline=replay?timelineRef.current:await chapterAudio(position.verseId,selectedReciter);
       if(!mountedRef.current||request!==requestRef.current)return;
       timelineRef.current=timeline;
       const timing=timeline?.verses[position.verseId];
-      const segment=timeline&&timing?{url:timeline.url,startSeconds:timing.start,endSeconds:timing.end}:await nativeOperation('resolveAudioSegment',()=>resolveAudioSegment(position.verseId,selectedReciter));
+      const segment=replay?loaded:timeline&&timing?{url:timeline.url,startSeconds:timing.start,endSeconds:timing.end}:await nativeOperation('resolveAudioSegment',()=>resolveAudioSegment(position.verseId,selectedReciter));
       // A file contains only this ayah: its natural ending cannot run into the next.
       // Prefetch while listening; never wait for future sources to start this verse.
-      if(!timeline)Promise.all(Array.from({length:Math.min(3,rangeRef.current.end-position.verseId)},(_,i)=>resolveAudioSegment(position.verseId+i+1,selectedReciter))).then(upcoming=>{
+      if(!replay&&!timeline)Promise.all(Array.from({length:Math.min(3,rangeRef.current.end-position.verseId)},(_,i)=>resolveAudioSegment(position.verseId+i+1,selectedReciter))).then(upcoming=>{
         if(!mountedRef.current||request!==requestRef.current)return;
         const wanted=new Set([segment.url,...upcoming.map(next=>next.url)]);
         for(const url of preloaded.current)if(!wanted.has(url)){clearPreloadedSource(url);preloaded.current.delete(url);}
@@ -141,7 +144,11 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!mountedRef.current||request!==requestRef.current)return;
       segmentEndRef.current=segment.endSeconds??null;
       const sameSource=sourceRef.current===segment.url;
-      if(!sameSource){await nativeOperation('replace',()=>player.replace(segment.url));sourceRef.current=segment.url;}
+      if(!segment.url.startsWith('https://'))throw new Error('Source audio invalide.');
+      await nativeOperation('pauseBeforeTransition',()=>player.pause());
+      if(!mountedRef.current||request!==requestRef.current)return;
+      if(!sameSource){debug('REPLACE',{nextAyah:position.verseId});await nativeOperation('replace',()=>player.replace({uri:segment.url}));sourceRef.current=segment.url;}
+      loadedSegmentRef.current={...segment,verseId:position.verseId,reciterId:selectedReciter.id};
       if(!mountedRef.current||request!==requestRef.current)return;
       await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(settingsRef.current.speed));
       if(!mountedRef.current||request!==requestRef.current)return;
@@ -149,8 +156,9 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!mountedRef.current||request!==requestRef.current)return;
       // A completed native player stays at the end of the file. Rewind it even
       // when the next repetition uses exactly the same verse and URL.
-      if(sameSource||segment.startSeconds!==undefined){const seek=nativeOperation('seekTo',()=>player.seekTo(segment.startSeconds??0));pendingSeeks.current.add(seek);try{await seek;}finally{pendingSeeks.current.delete(seek);}}
+      if(sameSource||segment.startSeconds!==undefined){debug('SEEK',{position:segment.startSeconds??0});const seek=nativeOperation('seekTo',()=>player.seekTo(segment.startSeconds??0));pendingSeeks.current.add(seek);try{await seek;}finally{pendingSeeks.current.delete(seek);}}
       if(!mountedRef.current||request!==requestRef.current)return;
+      debug(replay?'REPLAY':'PLAY');
       await nativeOperation('play',()=>player.play());
       if(!mountedRef.current||request!==requestRef.current){player.pause();return;}
       armedRequestRef.current=request;isPlayingRef.current=true;onVerseChangeRef.current?.(position.verseId);setPlaying(true);setLoading(false);collapseSoon();
@@ -172,7 +180,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
     finishBoundaryRef.current=()=>{
       if(finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
       const timeline=timelineRef.current;clearBoundary();
-      debug('FINISHED');
+      debug('ENDED');
       finishGuard.current=true;
       const next=nextAudioPosition(rangeRef.current,positionRef.current,settingsRef.current.mode,settingsRef.current.count,settingsRef.current.autoStop);
       if(!next){isPlayingRef.current=false;completedRef.current=true;setPlaying(false);player.pause();player.setActiveForLockScreen(false);onVerseChangeRef.current?.(null);return;}
@@ -180,10 +188,20 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       const repeatedVerse=settingsRef.current.mode==='each-verse'&&next.verseId===positionRef.current!.verseId&&next.repetition>positionRef.current!.repetition;
       const wait=Math.max(DEFAULT_AYAH_GAP_MS,restart||repeatedVerse?settingsRef.current.gap*1000:0);
       pendingContinuationRef.current=!!timeline&&next.verseId===positionRef.current!.verseId+1&&!!timeline.verses[next.verseId];
-      debug('NEXT',{nextAyah:next.verseId,nextRepeat:next.repetition,wait});player.pause();isPlayingRef.current=false;pendingRef.current=next;if(wait>0)scheduleNext(next,wait);else startAt(next);
+      debug(next.verseId===positionRef.current.verseId?'REPEAT':'VERSE CHANGE',{nextAyah:next.verseId,nextRepeat:next.repetition});
+      if(timeline)player.pause(); // Timestamp boundaries must stop immediately, before the next word.
+      isPlayingRef.current=false;pendingRef.current=next;
+      // Leave the native status callback before pausing and scheduling playback.
+      const session=requestRef.current;
+      transitionQueue.current=transitionQueue.current.then(async()=>{
+        if(!mountedRef.current||session!==requestRef.current)return;
+        await nativeOperation('pauseAtEnd',()=>player.pause());
+        if(!mountedRef.current||session!==requestRef.current)return;
+        debug('WAIT',{milliseconds:wait});scheduleNext(next,wait);
+      }).catch(e=>{if(session!==requestRef.current)return;completedRef.current=true;setPlaying(false);setError(e instanceof Error?e.message:String(e));});
     };
     const subscription=player.addListener('playbackStatusUpdate',status=>{
-      if(transitioningRef.current||armedRequestRef.current!==requestRef.current)return;
+      if(transitioningRef.current||armedRequestRef.current!==requestRef.current||(finishGuard.current&&!isPlayingRef.current))return;
       lastStatusRef.current={isLoaded:status.isLoaded,playing:status.playing,currentTime:status.currentTime,duration:status.duration};
       if(status.error){isPlayingRef.current=false;completedRef.current=true;sourceRef.current=null;onVerseChangeRef.current?.(null);setPlaying(false);setLoading(false);setError('Le verset ne peut pas être chargé. Vérifie ta connexion et réessaie.');return;}
       if(status.isLoaded&&Date.now()-progressAt.current>250){progressAt.current=Date.now();setProgress({time:status.currentTime,duration:status.duration});}
