@@ -21,7 +21,9 @@ export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
 export type DifficultyMarker = { user?:{createdAt:string}; admin?:{createdAt:string;comment?:string} };
 export type DifficultyEvent = {verseId:number;date:string;origin:'user'|'admin';action:'marked'|'resolved';comment?:string};
-export type AppState = { schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[] };
+export type ReviewCycle = {index:number;startDate:string;lengthDays:7|14|21|30;corpus:number[];days:number[][];completed:number[];assignments:Record<string,number>};
+export type Consolidation = {learnedAt:string;completed:Partial<Record<1|3|7,string>>};
+export type AppState = { schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -47,15 +49,17 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'tajweedPages',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'tajweedPages',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
+  const reviewMetadataRecovered=(remote.reviewCycle===undefined&&!!local.reviewCycle)||(remote.reviewConsolidations===undefined&&Object.keys(local.reviewConsolidations??{}).length>0)||(remote.reviewPriorityDue===undefined&&Object.keys(local.reviewPriorityDue??{}).length>0);
+  remote={...remote,reviewModelStartedAt:remote.reviewModelStartedAt??local.reviewModelStartedAt,reviewCycle:remote.reviewCycle===undefined?local.reviewCycle:remote.reviewCycle,reviewConsolidations:remote.reviewConsolidations??local.reviewConsolidations,reviewPriorityDue:remote.reviewPriorityDue??local.reviewPriorityDue};
   const audioPreferences=remote.audioPreferences??local.audioPreferences;
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks},shouldPush:true};
   const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader??local.reader,lastRead=remote.lastRead??local.lastRead;
   const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
-  if(audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
+  if(!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
   return {state:{...remote,bookmarks,audioPreferences,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
@@ -81,6 +85,7 @@ export function touch(state: AppState): AppState {return {...state,updatedAt:new
 export function markKnowledge(state: AppState, range: Range, mastery: Mastery): AppState {
   const knowledge={...state.knowledge},memorizedAt={...state.memorizedAt},reviewDue={...state.reviewDue};
   for(let id=range.start;id<=range.end;id++){
+    if(mastery!=='learning'&&state.onboardingDone&&state.knowledge[id]!=='perfect'&&state.knowledge[id]!=='review'&&!memorizedAt[id])memorizedAt[id]=todayLocal();
     knowledge[id]=mastery;
     if(mastery==='learning'){delete memorizedAt[id];delete reviewDue[id];}
   }
@@ -200,8 +205,8 @@ export function completeSession(state: AppState,id:string,memorized:boolean,from
   const memorizedAt={...state.memorizedAt};
   for(let verse=session.start;verse<=session.end;verse++)if(state.knowledge[verse]!=='perfect'&&state.knowledge[verse]!=='review'&&!memorizedAt[verse])memorizedAt[verse]=from;
   const updated=markKnowledge({...state,memorizedAt},session,'perfect');
-  const revisions=updated.revisions.filter(r=>r.end<session.start||r.start>session.end);
-  revisions.push({id:`r-${session.start}-${session.end}`,start:session.start,end:session.end,due:addDays(from,1),interval:1,streak:0,completedCount:0});
+  const revisions=[...updated.revisions];
+  if(!revisions.some(r=>r.id===`r-${session.start}-${session.end}`))revisions.push({id:`r-${session.start}-${session.end}`,start:session.start,end:session.end,due:addDays(from,1),interval:1,streak:0,completedCount:0});
   const sessions=updated.sessions.map(s=>s.id===id?{...s,status:'done' as SessionStatus,completedAt:new Date().toISOString(),completedDate:from}:s);
   return generateProgram({...updated,sessions,revisions},from);
 }

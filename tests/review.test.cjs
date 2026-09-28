@@ -1,98 +1,92 @@
-const test=require('node:test');
-const assert=require('node:assert/strict');
-const p=require('./build/core/program.js');
-const r=require('./build/core/review.js');
-const q=require('./build/core/quran.js');
-
-const start='2026-09-21';
-function learned(ids,day=start){
-  let state=p.defaultState();
-  for(const id of ids)state.knowledge[id]='perfect';
-  state.memorizedAt=Object.fromEntries(ids.map(id=>[id,day]));
-  return state;
-}
-
-test('un passage passe en révision habituelle le quatrième jour civil',()=>{
-  const state=learned([6234,6235,6236]);
-  assert.equal(r.reviewPlan(state,start).recent.length,1);
-  assert.equal(r.reviewPlan(state,start).session.length,0);
-  assert.equal(r.reviewPlan(state,'2026-09-22').recent.length,1);
-  assert.equal(r.reviewPlan(state,'2026-09-23').recent.length,1);
-  assert.equal(r.reviewPlan(state,'2026-09-24').recent.length,0);
-  const scheduled=r.prepareReviewSchedule(state,'2026-09-24');
-  assert.equal(r.reviewPlan(scheduled,'2026-09-24').habitual.length>0,true);
-  assert.equal(scheduled.memorizedAt[6234],start);
+const test=require('node:test'),assert=require('node:assert/strict');
+const p=require('./build/core/program.js'),r=require('./build/core/review.js'),q=require('./build/core/quran.js');
+const at='2026-09-21';
+const ids=range=>Array.from({length:range.end-range.start+1},(_,i)=>range.start+i);
+const taskIds=tasks=>tasks.flatMap(ids);
+function stateFor(known,learnedAt){const s=p.defaultState();for(const id of known)s.knowledge[id]='perfect';if(learnedAt)s.memorizedAt=Object.fromEntries(known.map(id=>[id,learnedAt]));return s;}
+for(const count of [1,7,10,30,60])for(const days of [7,14,21,30])test(`${count} Hizb / ${days} jours : corpus exact, aucun doublon, clôture réelle`,()=>{
+ const corpus=ids({start:1,end:q.hizbs[count-1].end});let state=stateFor(corpus);state.reviewSettings.cycleDays=days;state=r.prepareReviewSchedule(state,at);
+ assert.deepEqual(state.reviewCycle.corpus,corpus);assert.deepEqual(state.reviewCycle.days.flat(),corpus);assert.equal(new Set(state.reviewCycle.days.flat()).size,corpus.length);
+ const dailyWeights=state.reviewCycle.days.map(day=>day.reduce((n,id)=>n+r.reviewWeight(id),0));
+ const mean=dailyWeights.reduce((a,b)=>a+b,0)/days;
+ const maxVerse=Math.max(...corpus.map(r.reviewWeight));
+ assert(Math.max(...dailyWeights)-Math.min(...dailyWeights)<=mean*.65+maxVerse*2);
+ const proposed=[];
+ for(let day=0;day<days;day++){
+  const date=p.addDays(at,day);state=r.prepareReviewSchedule(state,date);const session=r.reviewPlan(state,date).session;proposed.push(...taskIds(session));
+  for(const task of session)state=r.gradeReviewTask(state,task,'perfect',date);
+  assert.equal(r.reviewPlan(state,date).session.length,0);
+ }
+ assert.deepEqual(proposed,corpus);assert.deepEqual(state.reviewCycle.completed,corpus);
+ const next=r.prepareReviewSchedule(state,p.addDays(at,days));assert.equal(next.reviewCycle.index,2);assert.equal(next.reviewCycle.completed.length,0);
+});
+test('connaissances non contiguës et petits corpus, jamais de verset inconnu',()=>{
+ const corpus=[1,2,3,4,5,6,7,10,11,12,q.surahs[29].start+7];
+ for(const length of [7,14,21,30]){const split=r.partitionReviewCorpus(corpus,length);assert.deepEqual(split.flat(),corpus);assert.equal(split.length,length);}
+});
+test('snapshot stable, nouveau savoir au prochain cycle uniquement',()=>{
+ let s=r.prepareReviewSchedule(stateFor([1,2,3,4,5,6,7]),at);const snapshot=JSON.stringify(s.reviewCycle.days);
+ s.knowledge[6236]='perfect';s.memorizedAt={6236:p.addDays(at,2)};s=r.prepareReviewSchedule(s,p.addDays(at,2));assert.equal(JSON.stringify(s.reviewCycle.days),snapshot);assert(!s.reviewCycle.corpus.includes(6236));
+ for(let day=0;day<7;day++){const date=p.addDays(at,day);for(const task of r.reviewPlan(s,date).session)s=r.gradeReviewTask(s,task,'perfect',date);}
+ const due=r.reviewPlan(s,p.addDays(at,9)).recent[0];s=r.gradeReviewTask(s,due,'perfect',p.addDays(at,9));for(let day=9;day<16;day++){const date=p.addDays(at,day);for(const task of r.reviewPlan(s,date).session)s=r.gradeReviewTask(s,task,'perfect',date);}s=r.prepareReviewSchedule(s,p.addDays(at,16));assert(s.reviewCycle.corpus.includes(6236));
+});
+test('J+1, J+3, J+7 exacts, échéances manquées retenues et une étape maximum par jour',()=>{
+ let s=r.prepareReviewSchedule(stateFor([6234,6235,6236],at),at);assert.equal(r.reviewPlan(s,at).session.length,0);
+ assert.deepEqual(r.reviewPlan(s,at).consolidations[0].steps.map(x=>x.due),['2026-09-22','2026-09-24','2026-09-28']);
+ let plan=r.reviewPlan(s,'2026-09-24');s=r.gradeReviewTask(s,plan.recent[0],'perfect','2026-09-24');assert.equal(s.reviewConsolidations[6236].completed[1],'2026-09-24');assert.equal(s.reviewConsolidations[6236].completed[3],undefined);assert.equal(r.reviewPlan(s,'2026-09-24').recent.length,0);
+ s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-25').recent[0],'perfect','2026-09-25');assert.equal(s.reviewConsolidations[6236].completed[3],'2026-09-25');
+ s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-10-01').recent[0],'perfect','2026-10-01');assert.equal(s.reviewConsolidations[6236].completed[7],'2026-10-01');assert.equal(r.reviewPlan(s,'2026-10-01').consolidations.length,0);
+});
+test('jour manqué : une seule part quotidienne, pas de validation automatique ni avalanche',()=>{
+ let s=r.prepareReviewSchedule(stateFor(ids(q.hizbs[0])),at);const first=[...s.reviewCycle.days[0]];
+ s=r.prepareReviewSchedule(s,'2026-09-24');assert.deepEqual(taskIds(r.reviewPlan(s,'2026-09-24').habitual),first);
+ for(const task of r.reviewPlan(s,'2026-09-24').session)s=r.gradeReviewTask(s,task,'perfect','2026-09-24');assert.equal(r.reviewPlan(s,'2026-09-24').habitual.length,0);
+ assert.deepEqual(taskIds(r.reviewPlan(s,'2026-09-25').habitual),s.reviewCycle.days[1]);assert.equal(s.reviewCycle.completed.length,first.length);
+ assert.equal(r.prepareReviewSchedule(s,'2026-10-15').reviewCycle.index,1);
+});
+test('qualité indépendante du cycle, hésitations et difficulté reviennent rapidement',()=>{
+ let s=r.prepareReviewSchedule(stateFor(ids(q.hizbs[0])),at);const task=r.reviewPlan(s,at).habitual[0];s=r.gradeReviewTask(s,task,'hesitant',at);
+ assert(s.reviewCycle.completed.includes(task.start));assert.equal(s.reviewPriorityDue[task.start],'2026-09-23');assert(s.difficultyMarkers[task.start].user);
+ s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-23').priority[0],'rework','2026-09-23');assert.equal(s.reviewPriorityDue[task.start],'2026-09-24');
+ s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-24').priority[0],'perfect','2026-09-24');assert.equal(s.difficultyMarkers[task.start],undefined);assert.deepEqual(s.reviewHistory.map(e=>e.grade),['hesitant','rework','perfect']);
+});
+test('ordre consolidation, priorité, cycle ; recouvrement crédité une fois et idempotence',()=>{
+ let s=stateFor([1,2,3,6236]);s.memorizedAt={6236:p.addDays(at,-1)};s=r.toggleDifficulty(s,6236,at);s=r.toggleDifficulty(s,2,at);s=r.prepareReviewSchedule(s,at);
+ const plan=r.reviewPlan(s,at);assert.equal(plan.session[0].category,'recent');const proposed=taskIds(plan.session);assert.equal(proposed.length,new Set(proposed).size);
+ const recent=plan.session[0];s=r.gradeReviewTask(s,recent,'perfect',at);const length=s.reviewHistory.length;s=r.gradeReviewTask(s,recent,'perfect',at);assert.equal(s.reviewHistory.length,length);assert.equal(s.difficultyMarkers[6236],undefined);
+});
+test('désactivation et changement de cycle préservent historiques, dates et marqueur professeur',()=>{
+ let s=stateFor([6236]);s.difficultyMarkers={6236:{admin:{createdAt:at,comment:'Respiration'}}};s=r.toggleDifficulty(s,6236,at);s=r.prepareReviewSchedule(s,at);s=r.gradeReviewTask(s,r.reviewPlan(s,at).session[0],'perfect',at);
+ assert.equal(s.difficultyMarkers[6236].user,undefined);assert.equal(s.difficultyMarkers[6236].admin.comment,'Respiration');const history=JSON.stringify(s.reviewHistory);
+ const off=r.setReviewsEnabled(s,false);assert.equal(r.reviewPlan(off).session.length,0);s=r.setReviewsEnabled(off,true);s=r.setReviewCycle(s,14,at);assert.equal(s.reviewCycle.lengthDays,14);assert.equal(JSON.stringify(s.reviewHistory),history);
+});
+test('unités fidèles : Hizb, Nisf, Rubu’, pages, versets ; incomplet jamais nommé complet',()=>{
+ assert.equal(r.reviewQuantity(ids(q.hizbs[0])),'1 Hizb');assert.equal(r.reviewQuantity(ids(q.halves[0])),'1 Nisf');assert.equal(r.reviewQuantity(ids(q.quarters[0])),'1 Rubu’');
+ assert.equal(r.reviewQuantity(ids(q.pageRange(4))),'1 page');assert.equal(r.reviewQuantity([q.pageRange(4).start]),'1 verset');assert.equal(r.reviewQuantity([6234,6235,6236]),'3 versets');
+ assert.notEqual(r.reviewQuantity(ids(q.quarters[0]).slice(1)),'1 Rubu’');
+});
+test('synchronisation JSON et reprise de compte conservent cycle et consolidations',()=>{
+ const s=r.prepareReviewSchedule(stateFor([1,6236],at),at);s.userId='a';const remote=JSON.parse(JSON.stringify(s));const restored=p.accountState('a',null,remote).state;assert.deepEqual(restored.reviewCycle,s.reviewCycle);assert.deepEqual(restored.reviewConsolidations,s.reviewConsolidations);
+});
+test('migration des seules révisions effectuées, historique intact, préparation idempotente',()=>{
+ let s=stateFor([6236],'2026-09-01');s.reviewHistory=[{id:'old',date:'2026-09-02',start:6236,end:6236,category:'recent',grade:'perfect'}];s.reviewDue={6236:'2026-09-30'};s=r.prepareReviewSchedule(s,at);assert.equal(s.reviewConsolidations[6236].completed[1],'2026-09-02');assert.equal(s.reviewConsolidations[6236].completed[3],undefined);assert.equal(s.reviewHistory[0].id,'old');assert.equal(s.reviewDue[6236],'2026-09-30');assert.equal(r.prepareReviewSchedule(s,at),s);
+});
+test('validation apprentissage : learnedAt daté une fois pour générer les consolidations',()=>{
+ let s=p.defaultState();s.sessions=[{id:'learn',date:at,start:6234,end:6236,unit:'verse3',status:'todo'}];s=p.completeSession(s,'learn',true,at);s=p.completeSession(s,'learn',true,'2026-09-25');assert.equal(s.memorizedAt[6234],at);assert.equal(r.reviewPlan(s,at).consolidations.length,1);
+});
+test('remise à zéro explicite ne restaure pas un ancien cycle depuis le cache',()=>{
+ const previous=r.prepareReviewSchedule(stateFor([1,2,3]),at);const reset=p.resetAllProgress(previous);assert.equal(p.reconcileState(previous,reset).state.reviewCycle,null);
 });
 
-test('désactiver puis réactiver conserve les données et répartit les échéances manquées',()=>{
-  let state=learned(Array.from({length:20},(_,i)=>6217+i),'2026-09-01');
-  state=r.prepareReviewSchedule(state,'2026-09-10');
-  const due={...state.reviewDue};
-  state=r.toggleDifficulty(state,6236,'2026-09-10');
-  const off=r.setReviewsEnabled(state,false,'2026-09-11');
-  assert.equal(r.reviewPlan(off,'2026-09-20').session.length,0);
-  assert.deepEqual(off.reviewDue,due);
-  assert.equal(off.difficultyMarkers[6236].user.createdAt,'2026-09-10');
-  const on=r.setReviewsEnabled(off,true,'2026-09-20');
-  const plan=r.reviewPlan(on,'2026-09-20');
-  assert(plan.session.length>0);
-  assert(plan.habitual.reduce((n,task)=>n+task.end-task.start+1,0)<=Math.ceil(20/7)*2);
-  assert.equal(on.memorizedAt[6236],'2026-09-01');
+test('J+7 manqué ne fait pas intégrer un nouveau verset au cycle suivant',()=>{
+ let s=r.prepareReviewSchedule(stateFor([6236],at),at);s=r.prepareReviewSchedule(s,p.addDays(at,7));assert(!s.reviewCycle.corpus.includes(6236));assert.equal(r.reviewPlan(s,p.addDays(at,7)).recent[0].start,6236);
 });
 
-test('la priorité ne double pas le verset dans la séance et la note reste historique',()=>{
-  let state=learned([6235,6236],'2026-09-19');
-  state=r.toggleDifficulty(state,6236,start);
-  const plan=r.reviewPlan(state,start);
-  assert.equal(plan.priority.length,1);
-  assert.equal(plan.recent.length,1);
-  assert.equal(plan.session.flatMap(task=>Array.from({length:task.end-task.start+1},(_,i)=>task.start+i)).filter(id=>id===6236).length,1);
-  const after=r.gradeReviewTask(state,plan.priority[0],'hesitant',start);
-  assert.equal(after.reviewHistory.length,1);
-  assert.equal(after.reviewHistory[0].grade,'hesitant');
-  assert.equal(r.reviewPlan(after,start).priority.length,0);
-  assert.equal(after.difficultyMarkers[6236].user.createdAt,start);
+test('un ancien client cloud ne fait pas disparaître le snapshot local déjà persisté',()=>{
+ const local=r.prepareReviewSchedule(stateFor([1,2,3]),at);const remote={...local,updatedAt:'2099-01-01T00:00:00.000Z'};delete remote.reviewCycle;delete remote.reviewConsolidations;delete remote.reviewPriorityDue;
+ const restored=p.reconcileState(local,remote);assert.deepEqual(restored.state.reviewCycle,local.reviewCycle);assert.equal(restored.shouldPush,true);
 });
 
-test('retirer son marqueur conserve le marqueur professeur et les deux historiques',()=>{
-  let state=learned([6236],'2026-09-01');
-  state.difficultyMarkers={6236:{admin:{createdAt:'2026-09-19',comment:'Revoir le début'}}};
-  state=r.toggleDifficulty(state,6236,start);
-  assert.equal(state.difficultyMarkers[6236].admin.comment,'Revoir le début');
-  state=r.toggleDifficulty(state,6236,'2026-09-22');
-  assert.equal(state.difficultyMarkers[6236].user,undefined);
-  assert.equal(state.difficultyMarkers[6236].admin.comment,'Revoir le début');
-  assert.deepEqual(state.difficultyHistory.map(row=>row.action),['marked','resolved']);
-});
-
-test('un juz incomplet ne produit jamais de rubu’ complet artificiel',()=>{
-  const juz=q.juzs[29];
-  const ids=Array.from({length:juz.end-juz.start+1},(_,i)=>juz.start+i).filter(id=>id!==juz.start);
-  let state=learned(ids,'2026-09-01');
-  state=r.prepareReviewSchedule(state,'2026-09-10');
-  const plan=r.reviewPlan(state,'2026-09-10');
-  assert.equal(plan.completeJuz,0);
-  assert(plan.completeRub<8);
-});
-
-test('un juz complet se répartit en véritables nisf sans couper une unité du jour',()=>{
-  const juz=q.juzs[29];
-  const ids=Array.from({length:juz.end-juz.start+1},(_,i)=>juz.start+i);
-  const state=r.prepareReviewSchedule(learned(ids,'2026-09-01'),'2026-09-10');
-  const plan=r.reviewPlan(state,'2026-09-10');
-  assert.equal(plan.completeJuz,1);
-  assert(plan.habitual.some(task=>task.label.startsWith('Nisf al-hizb')));
-  for(const task of plan.habitual.filter(task=>task.label.startsWith('Nisf'))){
-    assert.equal(task.start,q.quarters.find(quarter=>quarter.start===task.start).start);
-    assert.equal((task.end-task.start+1)>0,true);
-  }
-});
-
-test('une séance validée date chaque nouveau verset une seule fois',()=>{
-  let state=p.defaultState();
-  state.sessions=[{id:'learn',date:start,start:6234,end:6236,unit:'verse3',status:'todo'}];
-  state=p.completeSession(state,'learn',true,start);
-  assert.equal(state.memorizedAt[6234],start);
-  state=p.completeSession(state,'learn',true,'2026-09-25');
-  assert.equal(state.memorizedAt[6234],start);
+test('apprendre une zone chevauchante préserve aussi les anciens compteurs de révision',()=>{
+ let s=p.defaultState();s.revisions=[{id:'legacy',start:6233,end:6236,due:at,interval:14,streak:4,completedCount:12}];s.sessions=[{id:'new',date:at,start:6235,end:6236,unit:'verse2',status:'todo'}];s=p.completeSession(s,'new',true,at);assert.equal(s.revisions.find(x=>x.id==='legacy').completedCount,12);
 });

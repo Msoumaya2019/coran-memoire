@@ -1,0 +1,9 @@
+import React from 'react';
+import {Pressable,View} from 'react-native';
+import {ReviewGrade} from '../core/program';
+import {Icon,IconName,premiumShadow} from './Premium';
+import {colors,Label} from './theme';
+export function RevisionBottomActionBar({onGrade,onAudio,onRecord,active,disabled=false}:{onGrade:(grade:ReviewGrade)=>void;onAudio:()=>void;onRecord:()=>void;active?:ReviewGrade|'audio'|'record'|null;disabled?:boolean}){
+ const actions:[IconName,string,ReviewGrade|'audio'|'record',()=>void][]=[['check','Parfait','perfect',()=>onGrade('perfect')],['signal','Quelques\nhésitations','hesitant',()=>onGrade('hesitant')],['refresh','À\nretravailler','rework',()=>onGrade('rework')],['play','Écouter','audio',onAudio],['microphone','Ma voix','record',onRecord]];
+ return <View style={{flexDirection:'row',alignItems:'stretch',marginHorizontal:6,marginVertical:5,padding:5,borderRadius:24,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.line,...premiumShadow}}>{actions.map(([icon,label,key,action],i)=><React.Fragment key={key}>{i===3&&<View style={{width:1,marginHorizontal:3,marginVertical:10,backgroundColor:colors.line}}/>}<Pressable accessibilityRole="button" accessibilityLabel={label.replace('\n',' ')} accessibilityState={{selected:active===key,disabled}} disabled={disabled} onPress={action} style={{flex:1,minHeight:64,minWidth:44,alignItems:'center',justifyContent:'center',paddingHorizontal:1,paddingVertical:6,borderRadius:18,backgroundColor:active===key?colors.green:colors.soft,marginHorizontal:2,opacity:disabled?.5:1}}><Icon name={icon} size={22} color={active===key?'white':colors.green}/><Label style={{fontSize:10,lineHeight:13,textAlign:'center',marginTop:4,color:active===key?'white':colors.text,fontWeight:'600'}}>{label}</Label></Pressable></React.Fragment>)}</View>;
+}
