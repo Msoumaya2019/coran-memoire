@@ -1,3 +1,4 @@
+import ipaAudioSource from '../data/ipa-audio-source.json';
 import { Range, verseAt, verseId, verses, surahs } from './quran';
 
 export const reciters = [
@@ -33,7 +34,7 @@ export function continuousAudioPosition(timeline:ChapterAudio,range:Range,positi
 
 export function verseAudioUrl(id:number,reciter:Reciter=defaultReciter):string{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset audio invalide.');
-  return `https://cdn.islamic.network/quran/audio/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
+  return `${ipaAudioSource.baseUrl}/${reciter.bitrate}/${reciter.id}/${id}.mp3`;
 }
 
 export type AudioSegment={url:string;startSeconds?:number;endSeconds?:number};

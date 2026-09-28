@@ -19,3 +19,14 @@ Capture : work-dist/coran-test-page10.png (artefact local non versionné).
 - TypeScript et 125 tests réussis, également dans le job iOS GitHub.
 - Aucun test audio/microphone physique n’est revendiqué ; appareils iPhone et Android à vérifier.
 - Captures de l’aperçu conservées localement dans work-dist ; certains captures du navigateur subissent une réduction liée à sa mise à l’échelle.
+
+
+## Version 38 — lecteur commun sans header
+
+Aperçu navigateur vérifié : Coran Test page 10 en 393×852, Coran Tajweed
+en révision en 320×568. Aucun header ; cinq actions identiques ; quatre cartes
+Plus et accès à la traduction, au choix de source et au microphone compact.
+Les pages conservent le ratio et sont alignées en haut. Les captures CUA comportent
+un facteur d’échelle de l’aperçu ; elles ne prouvent pas les safe areas natives.
+TypeScript valide, 130 tests passent. Microphone, écoute et safe areas physiques
+iPhone/Android restent à tester. Aucune migration de données.

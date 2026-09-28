@@ -5,7 +5,10 @@ import {verseAt,surahs} from '../core/quran';
 const chapterIds:Record<string,number>={'ar.husary':6,'ar.alafasy':7,'ar.minshawi':9,'ar.shaatree':4};
 const requests=new Map<string,Promise<ChapterAudio|null>>();
 const unavailableUntil=new Map<string,number>();
-export async function chapterAudio(id:number,reciter:Reciter):Promise<ChapterAudio|null>{
+export async function chapterAudio(id:number,reciter:Reciter,source:'verse-files'|'chapter-timestamps'='verse-files'):Promise<ChapterAudio|null>{
+ // The supplied IPA uses independent verse files. Prefer their actual file boundaries,
+ // not approximate chapter timestamps; the existing resolver/preloader handles them.
+ if(source==='verse-files')return null;
  const chapter=verseAt(id).surah,resource=chapterIds[reciter.id];if(!resource)return null;
  const key=`chapter-audio-v1:${resource}:${chapter}`;
  if((unavailableUntil.get(key)??0)>Date.now())return null;

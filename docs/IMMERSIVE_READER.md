@@ -1,3 +1,5 @@
+> État historique build 37. Le layout actuel sans header est décrit dans SESSION_VOICE_IPA_AUDIO.md.
+
 # Lecteur immersif commun — 0.9.25 / build 37
 
 ## Interface
