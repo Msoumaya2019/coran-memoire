@@ -10,7 +10,7 @@ function controls(mode='passage',fallbackReciter=null,repeatCount=3,options={}){
  const timeline={url:'https://example.com/chapter.mp3',verses:{5:{start:10,end:11},6:{start:11,end:12},7:{start:12,end:13},8:{start:13,end:14}}};
  const timers=new Map();
  vm.runInNewContext(code,{exports,console:options.console??console,Promise,setTimeout:(fn,delay)=>{timers.set(fn,delay);return fn;},clearTimeout:fn=>timers.delete(fn),require(name){
-  return {'react':React,'react-native':native,'expo-audio':{setAudioModeAsync:()=>Promise.resolve(),preload:()=>Promise.resolve(),clearPreloadedSource(){}},'@react-native-async-storage/async-storage':{getItem:()=>Promise.resolve(null),setItem:()=>Promise.resolve()},'./services/audioFocus':{createManagedAudioPlayer:()=>player},'./services/quranAudioTimeline':{chapterAudio:()=>Promise.resolve(options.timeline?timeline:null)},'./core/audio':core,'./core/quran':quran,'./ui/theme':ui,'./ui/Premium':{Icon:'Icon'}}[name]??(()=>{throw Error(name)})();}});
+  return {'react':React,'react-native':native,'expo-audio':{setAudioModeAsync:()=>Promise.resolve(),preload:()=>{throw Error('native iOS preload must not be called');},clearPreloadedSource(){}},'@react-native-async-storage/async-storage':{getItem:()=>Promise.resolve(null),setItem:()=>Promise.resolve()},'./services/verseAudioCache':{cachedVerseAudio:async url=>options.disk?'file:///cache/'+encodeURIComponent(url):url},'./services/audioFocus':{createManagedAudioPlayer:()=>player},'./services/quranAudioTimeline':{chapterAudio:()=>Promise.resolve(options.timeline?timeline:null)},'./core/audio':core,'./core/quran':quran,'./ui/theme':ui,'./ui/Premium':{Icon:'Icon'}}[name]??(()=>{throw Error(name)})();}});
  const tree=exports.PassageAudioControls({sessionRange:options.range??(fallbackReciter?{start:1,end:7}:{start:5,end:8}),page:1,dock:'expanded',setDock(){},onVerseChange:id=>changes.push(id)});
  const cleanups=effects.map(fn=>fn()).filter(fn=>typeof fn==='function');
  function find(node,label){if(!node||typeof node!=='object')return null;if(Array.isArray(node)){for(const child of node){const found=find(child,label);if(found)return found;}return null;}if(node.props?.accessibilityLabel===label||(node.type==='Button'&&node.children.includes(label)))return node;return find(node.children,label);}
@@ -175,4 +175,10 @@ test('chaque verset ×3: replace seulement au changement réel de verset',async(
 test('Arrêt dès le callback de fin annule aussi la pause encore dans la file',async()=>{
  const c=controls('each-verse',null,3);c.begin();await settle();finish(c);c.press('Arrêter la lecture');await settle();c.advanceGap();await settle();
  assert.equal(c.calls.play,1);assert.equal(c.calls.replace,1);c.close();
+});
+
+test('iOS : chaque changement de verset reçoit un fichier local, jamais un item préchargé natif',async()=>{
+ const urls=[];const c=controls('each-verse',null,2,{disk:true,range:{start:5,end:6},replace(source){urls.push(source.uri);}});
+ c.begin();await settle();for(let i=0;i<4;i++){finish(c);await settle();c.advanceGap();await settle();}
+ assert.equal(urls.length,2);assert.ok(urls.every(url=>url.startsWith('file:///cache/')));assert.equal(c.calls.play,4);c.close();
 });

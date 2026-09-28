@@ -1,3 +1,4 @@
+import {cachedVerseAudio} from './services/verseAudioCache';
 import {chapterAudio,ChapterAudio} from './services/quranAudioTimeline';
 import {Icon} from './ui/Premium';
 import {createManagedAudioPlayer as createAudioPlayer} from './services/audioFocus';
@@ -138,8 +139,8 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!replay&&!timeline)Promise.all(Array.from({length:Math.min(3,rangeRef.current.end-position.verseId)},(_,i)=>resolveAudioSegment(position.verseId+i+1,selectedReciter))).then(upcoming=>{
         if(!mountedRef.current||request!==requestRef.current)return;
         const wanted=new Set([segment.url,...upcoming.map(next=>next.url)]);
-        for(const url of preloaded.current)if(!wanted.has(url)){clearPreloadedSource(url);preloaded.current.delete(url);}
-        for(const next of upcoming)if(!preloaded.current.has(next.url)){preloaded.current.add(next.url);preload(next.url).catch(e=>console.warn('[Quran audio] Préchargement',e));}
+        for(const url of preloaded.current)if(!wanted.has(url)){if(Platform.OS!=='ios')clearPreloadedSource(url);preloaded.current.delete(url);}
+        for(const next of upcoming)if(!preloaded.current.has(next.url)){preloaded.current.add(next.url);(Platform.OS==='ios'?cachedVerseAudio(next.url):preload(next.url)).catch(e=>console.warn('[Quran audio] Préchargement',e));}
       }).catch(e=>console.warn('[Quran audio] Préchargement',e));
       if(!mountedRef.current||request!==requestRef.current)return;
       segmentEndRef.current=segment.endSeconds??null;
@@ -147,7 +148,12 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!segment.url.startsWith('https://'))throw new Error('Source audio invalide.');
       await nativeOperation('pauseBeforeTransition',()=>player.pause());
       if(!mountedRef.current||request!==requestRef.current)return;
-      if(!sameSource){debug('REPLACE',{nextAyah:position.verseId});await nativeOperation('replace',()=>player.replace({uri:segment.url}));sourceRef.current=segment.url;}
+      if(!sameSource){
+        const uri=timeline?segment.url:await nativeOperation('cacheVerseFile',()=>cachedVerseAudio(segment.url));
+        if(!mountedRef.current||request!==requestRef.current)return;
+        debug('REPLACE',{nextAyah:position.verseId,sourceKind:uri.startsWith('file:')?'disk':'remote'});
+        await nativeOperation('replace',()=>player.replace({uri}));sourceRef.current=segment.url;
+      }
       loadedSegmentRef.current={...segment,verseId:position.verseId,reciterId:selectedReciter.id};
       if(!mountedRef.current||request!==requestRef.current)return;
       await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(settingsRef.current.speed));
@@ -215,7 +221,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!(status.didJustFinish||segmentFinished||fileFinished)||finishGuard.current||!isPlayingRef.current||!positionRef.current)return;
       finishBoundaryRef.current();
     });
-    return()=>{for(const url of preloaded.current)clearPreloadedSource(url);preloaded.current.clear();mountedRef.current=false;requestRef.current++;subscription.remove();clearBoundary();clearPause();clearCollapse();isPlayingRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}transitionQueue.current.finally(()=>player.release()).catch(e=>console.error('[AUDIO ERROR] release',e));};
+    return()=>{for(const url of preloaded.current)if(Platform.OS!=='ios')clearPreloadedSource(url);preloaded.current.clear();mountedRef.current=false;requestRef.current++;subscription.remove();clearBoundary();clearPause();clearCollapse();isPlayingRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}transitionQueue.current.finally(()=>player.release()).catch(e=>console.error('[AUDIO ERROR] release',e));};
   },[player]);
   useEffect(()=>{stop();rangeRef.current=sessionRange;setSelectedRange(sessionRange);setSelection(sessionMode===false?'page':'session');setChosenId(sessionRange.start);setSurahText(String(verseAt(sessionRange.start).surah));setFirstText(String(verseAt(sessionRange.start).ayah));setLastText(String(verseAt(sessionRange.end).surah===verseAt(sessionRange.start).surah?verseAt(sessionRange.end).ayah:verseAt(sessionRange.start).ayah));},[sessionRange.start,sessionRange.end]);
   useEffect(()=>{if(positionRef.current){const session=requestRef.current;transitionQueue.current=transitionQueue.current.then(async()=>{if(mountedRef.current&&session===requestRef.current){await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(speed));armBoundary();}}).catch(e=>{setError(e instanceof Error?e.message:String(e));});}},[speed]);
