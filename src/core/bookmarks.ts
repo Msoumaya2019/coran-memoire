@@ -1,19 +1,19 @@
 import type {AppState} from './program';
 import {pageOf,verseAt,verses} from './quran';
 
-export type VerseBookmark={verseId:number;surah:number;ayah:number;page:number;createdAt:string;updatedAt:string;lastUsedAt?:string;deletedAt?:string};
-export function saveBookmark(state:AppState,id:number,at=new Date().toISOString()):AppState{
+export type VerseBookmark={verseId:number;surah:number;ayah:number;page:number;sourcePages?:Record<string,number>;createdAt:string;updatedAt:string;lastUsedAt?:string;deletedAt?:string};
+export function saveBookmark(state:AppState,id:number,at=new Date().toISOString(),sourcePage?:{source:string;page:number}):AppState{
   if(!Number.isInteger(id)||id<1||id>verses.length)throw new Error('Verset inexistant.');
   const verse=verseAt(id),old=state.bookmarks?.[id];
-  return {...state,updatedAt:at,lastRead:{page:pageOf(id),verseId:id,readAt:at},bookmarks:{...state.bookmarks,[id]:{verseId:id,surah:verse.surah,ayah:verse.ayah,page:pageOf(id),createdAt:old?.createdAt??at,updatedAt:at}}};
+  return {...state,updatedAt:at,lastRead:{page:sourcePage?.page??pageOf(id),verseId:id,readAt:at},bookmarks:{...state.bookmarks,[id]:{verseId:id,surah:verse.surah,ayah:verse.ayah,page:pageOf(id),sourcePages:sourcePage?{...old?.sourcePages,[sourcePage.source]:sourcePage.page}:old?.sourcePages,createdAt:old?.createdAt??at,updatedAt:at}}};
 }
 export function deleteBookmark(state:AppState,id:number,at=new Date().toISOString()):AppState{
   const item=state.bookmarks?.[id];if(!item)return state;
   return {...state,updatedAt:at,bookmarks:{...state.bookmarks,[id]:{...item,deletedAt:at,updatedAt:at}}};
 }
-export function useBookmark(state:AppState,id:number,at=new Date().toISOString()):AppState{
+export function useBookmark(state:AppState,id:number,at=new Date().toISOString(),pageOverride?:number):AppState{
   const item=state.bookmarks?.[id];if(!item||item.deletedAt)return state;
-  return {...state,updatedAt:at,lastRead:{page:pageOf(id),verseId:id,readAt:at},bookmarks:{...state.bookmarks,[id]:{...item,lastUsedAt:at,updatedAt:at}}};
+  return {...state,updatedAt:at,lastRead:{page:pageOverride??pageOf(id),verseId:id,readAt:at},bookmarks:{...state.bookmarks,[id]:{...item,lastUsedAt:at,updatedAt:at}}};
 }
 export function visibleBookmarks(state:AppState):VerseBookmark[]{return Object.values(state.bookmarks??{}).filter(b=>!b.deletedAt).sort((a,b)=>(b.lastUsedAt??b.updatedAt).localeCompare(a.lastUsedAt??a.updatedAt));}
 // Keep deletion markers so another device cannot restore an older saved verse.

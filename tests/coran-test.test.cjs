@@ -49,3 +49,30 @@ test('future audio adapter uses existing reciter and repeat logic',async()=>{
  const next=model.testAudioAdapter.next({start:73,end:74},{verseId:73,repetition:1},'each-verse',3);
  assert.deepEqual(next,{verseId:73,repetition:2});assert.deepEqual(model.emptyPlaybackState(),{currentVerse:null,position:null,isPlaying:false});
 });
+
+test('every QPC page uses its original verse range, including differences from image sources',()=>{
+ for(let p=1;p<=604;p++){
+  const ids=page(p).lines.flatMap(line=>line.words.map(w=>model.verseIndex[`${w[1]}:${w[2]}`].id));
+  assert.deepEqual(model.testPageRange(p),{start:Math.min(...ids),end:Math.max(...ids)});
+  for(const id of new Set(ids))assert.equal(model.testVersePage(id,p),p);
+ }
+ const q=require('./build/core/quran');let different=0;
+ for(const item of Object.values(model.verseIndex)){assert.ok(item.pages.includes(model.testVersePage(item.id)));if(!item.pages.includes(q.pageOf(item.id)))different++;}
+ assert.ok(different>0,'source pagination must not silently use the other images');
+});
+test('reader overlay follows global verse IDs without rewriting original text',()=>{
+ const state=model.readerOverlayState({playingVerseId:73,selectedVerseId:74,bookmarkIds:[73],difficultyIds:[74],sessionRange:{start:73,end:74},showSession:true,selecting:true,primary:'#554488',selection:'#eee',gold:'#abc'});
+ assert.equal(state.playing,'2:66');assert.equal(state.selected,'2:67');assert.deepEqual(state.bookmarks,['2:66']);assert.deepEqual(state.session,['2:66','2:67']);assert.equal(state.selecting,true);
+ const html=testPageHtml(page(10),{page:'data:font/woff2;base64,AA==',title:'data:font/woff2;base64,AA==',basmala:'data:font/woff2;base64,AA=='});
+ const script=html.match(/<script>([\s\S]*)<\/script>/)[1];assert.doesNotThrow(()=>new Function(script));
+});
+test('one shared bookmark persists the exact QPC page and resumes after account serialization',()=>{
+ const {saveBookmark,useBookmark,visibleBookmarks}=require('./build/core/bookmarks');
+ const {defaultState,reconcileState}=require('./build/core/program');
+ const q=require('./build/core/quran');const item=Object.values(model.verseIndex).find(x=>!x.pages.includes(q.pageOf(x.id)));
+ let state=saveBookmark({...defaultState(),userId:'owner',reader:{mushaf:'coranTest',followAudio:true}},item.id,'2026-09-28T11:00:00Z',{source:'coranTest',page:item.pages[0]});
+ state=JSON.parse(JSON.stringify(state));assert.equal(state.reader.mushaf,'coranTest');assert.equal(visibleBookmarks(state).length,1);assert.equal(state.bookmarks[item.id].sourcePages.coranTest,item.pages[0]);
+ state=useBookmark(state,item.id,'2026-09-28T11:01:00Z',item.pages[0]);assert.equal(state.lastRead.page,item.pages[0]);assert.equal(state.lastRead.verseId,item.id);
+ state=saveBookmark(state,item.id,'2026-09-28T11:02:00Z');assert.equal(visibleBookmarks(state).length,1);assert.equal(state.bookmarks[item.id].sourcePages.coranTest,item.pages[0]);
+ assert.equal(reconcileState({...defaultState(),userId:'owner'},state).state.reader.mushaf,'coranTest');
+});

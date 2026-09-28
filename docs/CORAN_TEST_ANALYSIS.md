@@ -171,3 +171,15 @@ Vérifier aussi les lecteurs habituels, le Tajweed, l’audio et une séance d�
 Les builds natifs sont lancés via les workflows Android/iOS habituels. Leur état
 final et leurs liens sont communiqués dans le compte rendu. Les essais sur appareils
 physiques iOS/Android restent à effectuer : l’aperçu navigateur ne les remplace pas.
+
+### Résultats de compilation — version 0.9.24 (build 36)
+
+- Exports Metro Android et iOS : réussis ; toutes les polices Coran Test sont embarquées.
+- GitHub iOS : réussi, [IPA non signée](https://github.com/Msoumaya2019/coran-memoire/actions/runs/36403750591).
+- GitHub Android : réussi, [workflow APK](https://github.com/Msoumaya2019/coran-memoire/actions/runs/36403738148).
+- Export Web complet : non validé, résolution du WASM d’Expo SQLite refusée par la configuration Web actuelle. L’aperçu visuel utilise le stockage simulé habituel ; les builds mobiles ne sont pas concernés.
+- Commit du code compilé : 18eaf5d14fba5b259afe2f1b38f81dde676a0705.
+
+## Intégration suivante — 0.9.25 / build 37
+
+Coran Test rejoint désormais le lecteur commun et les réglages. Toutes les sources, y compris Tajweed, utilisent l’en-tête minimal et la barre flottante Écouter / Traduction / Marque-page. Les actions secondaires et les fonctions de séance restent accessibles dans le menu. Voir `IMMERSIVE_READER.md` pour les changements, la pagination spécifique, les 125 tests et les essais manuels.

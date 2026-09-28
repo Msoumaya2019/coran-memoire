@@ -1,5 +1,5 @@
 import indexRaw from './data/verse-index.json';
-import {verseId} from '../core/quran';
+import {verseId,verseAt} from '../core/quran';
 import {nextAudioPosition,resolveAudioSegment,defaultReciter,Reciter,AudioPosition,RepeatCount,RepeatMode} from '../core/audio';
 import {Range} from '../core/quran';
 
@@ -11,8 +11,18 @@ export type NormalizedRegion={x:number;y:number;width:number;height:number;line:
 export type MeasuredWord={id:number;key:VerseKey;region:NormalizedRegion};
 export const originalPageWidth=1000,originalPageHeight=2120;
 export const verseIndex=indexRaw as Record<VerseKey,{id:number;pages:number[];lines:number[][]}>;
+const pageRanges:Record<number,Range>={};
+for(const item of Object.values(verseIndex))for(const page of item.pages){const range=pageRanges[page];if(range){range.start=Math.min(range.start,item.id);range.end=Math.max(range.end,item.id);}else pageRanges[page]={start:item.id,end:item.id};}
+export function testPageRange(page:number):Range{if(!pageRanges[page])throw new Error('Page invalide.');return {...pageRanges[page]};}
 export const validTestPage=(page:number)=>Number.isInteger(page)&&page>=1&&page<=604;
 export const adjacentTestPages=(page:number)=>[page-1,page,page+1].filter(validTestPage);
+
+export type ReaderOverlayState={enabled:boolean;selecting:boolean;playing:VerseKey|null;selected:VerseKey|null;bookmarks:VerseKey[];difficulty:VerseKey[];session:VerseKey[];primary:string;selection:string;gold:string};
+const keyOf=(id:number):VerseKey=>{const verse=verseAt(id);return `${verse.surah}:${verse.ayah}`;};
+export function readerOverlayState({playingVerseId,selectedVerseId,bookmarkIds=[],difficultyIds=[],sessionRange,showSession=false,selecting=false,primary,selection,gold}:{playingVerseId:number|null;selectedVerseId?:number|null;bookmarkIds?:number[];difficultyIds?:number[];sessionRange:Range;showSession?:boolean;selecting?:boolean;primary:string;selection:string;gold:string}):ReaderOverlayState{
+ return {enabled:true,selecting,playing:playingVerseId===null?null:keyOf(playingVerseId),selected:selectedVerseId==null?null:keyOf(selectedVerseId),bookmarks:bookmarkIds.map(keyOf),difficulty:difficultyIds.map(keyOf),session:showSession?Array.from({length:sessionRange.end-sessionRange.start+1},(_,i)=>keyOf(sessionRange.start+i)):[],primary,selection,gold};
+}
+export function testVersePage(id:number,currentPage?:number){const pages=verseIndex[keyOf(id)]?.pages;if(!pages?.length)throw new Error('Verset introuvable dans le Mushaf.');return currentPage!==undefined&&pages.includes(currentPage)?currentPage:pages[0];}
 
 /** Original metadata supplies lines/words, not pixel rectangles. Measurements are
  * produced by the same browser layout that paints the page, never guessed. */
