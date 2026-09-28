@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript');
 const core=require('./build/core/audio.js'),quran=require('./build/core/quran.js');
 function controls(mode='passage',fallbackReciter=null,repeatCount=3,options={}){
- const effects=[],changes=[],calls={replace:0,play:0,pause:0,seek:[],release:0};let listener;
- const player={currentTime:0,replace(source){calls.replace++;if(options.replace)options.replace(source);},play(){calls.play++;},pause(){calls.pause++;},seekTo(...args){calls.seek.push(args);return options.seek?options.seek():Promise.resolve();},setPlaybackRate(){},setActiveForLockScreen(){},addListener(_,fn){listener=fn;return {remove(){listener=null;}};},release(){calls.release++;}};
+ const effects=[],changes=[],calls={replace:0,play:0,pause:0,seek:[],release:0,lockScreen:0};let listener;
+ const player={currentTime:0,replace(source){calls.replace++;if(options.replace)options.replace(source);},play(){calls.play++;},pause(){calls.pause++;},seekTo(...args){calls.seek.push(args);return options.seek?options.seek():Promise.resolve();},setPlaybackRate(){},setActiveForLockScreen(active){if(active)calls.lockScreen++;},addListener(_,fn){listener=fn;return {remove(){listener=null;}};},release(){calls.release++;}};
  const React={createElement:(type,props,...children)=>({type,props:props||{},children}),Fragment:'fragment',useState:initial=>[initial===core.defaultReciter&&fallbackReciter?fallbackReciter:initial==='passage'?mode:initial===3?repeatCount:initial===0&&options.gap?options.gap:typeof initial==='function'?initial():initial,()=>{}],useRef:initial=>({current:initial}),useEffect:fn=>effects.push(fn),useMemo:fn=>fn()};
  const ui=Object.fromEntries(['Button','Choice','Field','Label'].map(name=>[name,name]));ui.colors={};
  const native=Object.fromEntries(['KeyboardAvoidingView','Pressable','ScrollView','Text','View'].map(name=>[name,name]));native.Platform={OS:'ios'};native.PanResponder={create:()=>({panHandlers:{}})};native.LayoutAnimation={configureNext(){},Presets:{easeInEaseOut:{}}};
@@ -163,7 +163,7 @@ for(const count of [2,3,5])test(`même verset ×${count}: un seul replace, puis 
   c.emit(5,{duration:5,playing:false,error:'late completed-item status'});
   if(pass<count){assert.ok([...c.timers.values()].includes(200));c.advanceGap();await settle();}
  }
- assert.equal(c.calls.replace,1);assert.equal(c.calls.play,count);
+ assert.equal(c.calls.replace,1);assert.equal(c.calls.play,count);assert.equal(c.calls.lockScreen,1);
  assert.deepEqual(c.calls.seek,Array.from({length:count-1},()=>[0]));
  assert.deepEqual(c.changes.filter(id=>id!==null),Array(count).fill(5));c.close();
 });

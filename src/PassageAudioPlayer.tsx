@@ -152,7 +152,8 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
       if(!mountedRef.current||request!==requestRef.current)return;
       await nativeOperation('setPlaybackRate',()=>player.setPlaybackRate(settingsRef.current.speed));
       if(!mountedRef.current||request!==requestRef.current)return;
-      await nativeOperation('setActiveForLockScreen',()=>player.setActiveForLockScreen(true,{title:`Coran · ${verseAudioLabel(position.verseId)}`,artist:selectedReciter.name,albumTitle:'Hafs ‘an ‘Âsim'}));
+      // Repeating the same loaded item does not re-register native lock-screen controls.
+      if(!replay)await nativeOperation('setActiveForLockScreen',()=>player.setActiveForLockScreen(true,{title:`Coran · ${verseAudioLabel(position.verseId)}`,artist:selectedReciter.name,albumTitle:'Hafs ‘an ‘Âsim'}));
       if(!mountedRef.current||request!==requestRef.current)return;
       // A completed native player stays at the end of the file. Rewind it even
       // when the next repetition uses exactly the same verse and URL.
