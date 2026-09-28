@@ -86,7 +86,7 @@ export function RecitationRecorder({range,invocation,onSaved,onShare,onRecording
       {phase==='paused'&&action('Reprendre','play',()=>{recorder.record();setPhase('recording');})}
       {(phase==='recording'||phase==='paused')&&<>{action('Terminer','stop',()=>finish(true),true)}{action('Annuler','close',()=>finish(false))}</>}
       {phase==='preview'&&<>{action('Réécouter','play',playback)}{action('Recommencer','refresh',restart)}{action('Enregistrer','check',saveDraft,true)}</>}
-      {phase==='saved'&&<>{action('Réécouter','play',playback)}{action('Recommencer','refresh',restart)}</>}
+      {phase==='saved'&&<>{action('Réécouter','play',playback)}{action('Recommencer','refresh',restart)}{item&&onShare&&action('Partager','share-variant',()=>onShare(item))}</>}
     </View>{!!message&&<Label numberOfLines={2} style={{fontSize:11,color:colors.muted,marginTop:6}}>{message}</Label>}</View>;
   }
   return <Card><Label style={{fontWeight:'700',fontSize:17}}>{invocation?'Ma prononciation':'Enregistrer ma voix'}</Label><Label style={{color:colors.muted,fontSize:13,marginTop:5}}>{invocation?invocation.title??'Invocation':range?reference(range):''} · enregistrement personnel</Label>
