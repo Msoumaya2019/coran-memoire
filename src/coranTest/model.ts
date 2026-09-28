@@ -1,0 +1,43 @@
+import indexRaw from './data/verse-index.json';
+import {verseId} from '../core/quran';
+import {nextAudioPosition,resolveAudioSegment,defaultReciter,Reciter,AudioPosition,RepeatCount,RepeatMode} from '../core/audio';
+import {Range} from '../core/quran';
+
+export type VerseKey=`${number}:${number}`;
+export type TestWord=[id:number,surah:number,ayah:number,word:number,glyphs:string,arabic:string];
+export type TestLine={line:number;type:'ayah'|'surah_name'|'basmallah';centered:boolean;surah:number|null;words:TestWord[]};
+export type TestPage={page:number;surah:number;juz:number;fontSize:number;lines:TestLine[]};
+export type NormalizedRegion={x:number;y:number;width:number;height:number;line:number};
+export type MeasuredWord={id:number;key:VerseKey;region:NormalizedRegion};
+export const originalPageWidth=1000,originalPageHeight=2120;
+export const verseIndex=indexRaw as Record<VerseKey,{id:number;pages:number[];lines:number[][]}>;
+export const validTestPage=(page:number)=>Number.isInteger(page)&&page>=1&&page<=604;
+export const adjacentTestPages=(page:number)=>[page-1,page,page+1].filter(validTestPage);
+
+/** Original metadata supplies lines/words, not pixel rectangles. Measurements are
+ * produced by the same browser layout that paints the page, never guessed. */
+export function verseRegions(words:MeasuredWord[]):Partial<Record<VerseKey,NormalizedRegion[]>>{
+  const result:Partial<Record<VerseKey,NormalizedRegion[]>>={};
+  for(const word of words){
+    const r=word.region;
+    if(!verseIndex[word.key]||![r.x,r.y,r.width,r.height].every(Number.isFinite)||r.width<=0||r.height<=0)continue;
+    const regions=result[word.key]??(result[word.key]=[]);
+    const same=regions.find(x=>x.line===r.line);
+    if(same){const right=Math.max(same.x+same.width,r.x+r.width),bottom=Math.max(same.y+same.height,r.y+r.height);same.x=Math.min(same.x,r.x);same.y=Math.min(same.y,r.y);same.width=right-same.x;same.height=bottom-same.y;}
+    else regions.push({...r});
+  }
+  return result;
+}
+
+export type TestPlaybackState={currentVerse:VerseKey|null;position:AudioPosition|null;isPlaying:boolean};
+export const emptyPlaybackState=():TestPlaybackState=>({currentVerse:null,position:null,isPlaying:false});
+/** Adapter only: the existing player will own native playback, cancellation,
+ * buffering and audio focus when enabled. No second native player is created. */
+export const testAudioAdapter={
+  resolve:(key:VerseKey,reciter:Reciter=defaultReciter)=>{
+    const [surah,ayah]=key.split(':').map(Number),id=verseId(surah,ayah);
+    if(id===null)throw new Error('Verset inconnu.');
+    return resolveAudioSegment(id,reciter);
+  },
+  next:(range:Range,position:AudioPosition,mode:RepeatMode,count:RepeatCount)=>nextAudioPosition(range,position,mode,count),
+};

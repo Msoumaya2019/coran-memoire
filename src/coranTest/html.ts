@@ -1,0 +1,25 @@
+import ornament from './data/ornament.json';
+import {TestPage,originalPageHeight,originalPageWidth} from './model';
+const escape=(value:string)=>value.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+export type PageFonts={page:string;title:string;basmala:string};
+/** True QPC glyphs and COLR palettes; no OCR, rasterisation or substitute text. */
+export function testPageHtml(page:TestPage,fonts:PageFonts){
+ const lines=page.lines.map((line,index)=>{const basmalaSurah=page.lines.slice(index+1).find(next=>next.words.length)?.words[0][1]??page.surah;return `<div class="line ${line.centered?'centered':''}" data-line="${line.line}">${line.type==='ayah'?line.words.map(w=>`<span class="word" data-id="${w[0]}" data-verse="${w[1]}:${w[2]}" aria-label="${escape(w[5])}">${escape(w[4])}</span>`).join(''):line.type==='surah_name'?`<div class="surah-heading">${ornament}<span class="surah">surah${String(line.surah).padStart(3,'0')}</span></div>`:`<span class="basmala">${basmalaSurah===2?'ﲚﲛﲞﲤ':basmalaSurah===95||basmalaSurah===97?'ﭗﲫﲮﲴ':'ﲪﲫﲮﲴ'}</span>`}</div>`;}).join('');
+ return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src data: http://127.0.0.1:*; style-src 'unsafe-inline'; script-src 'unsafe-inline';"><style>
+@font-face{font-family:Page;src:url('${fonts.page}') format('woff2')}@font-face{font-family:Title;src:url('${fonts.title}') format('woff2')}@font-face{font-family:Basmala;src:url('${fonts.basmala}') format('woff2')}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#faf7f2;touch-action:none;user-select:none;-webkit-user-select:none}
+#paper{width:${originalPageWidth}px;height:${originalPageHeight}px;position:absolute;visibility:hidden;transform-origin:top left;padding:70px 30px 55px;color:#111;background:#faf7f2}
+.top{height:105px;display:flex;align-items:center;justify-content:space-between;font:30px sans-serif;color:#795e50}.top .surah{font:68px Title}
+.body{height:1830px;display:flex;flex-direction:column;justify-content:center}.line{height:122px;flex-shrink:0;display:flex;direction:rtl;align-items:center;justify-content:space-between;font:${page.fontSize}px Page;white-space:nowrap;line-height:1}.line.centered{justify-content:center;gap:8px}.word{display:inline-block;direction:rtl}.surah-heading{position:relative;width:100%;height:100px;display:flex;justify-content:center;align-items:center}.surah-heading svg{position:absolute;width:100%;height:100%;inset:0}.line .surah{position:relative;font:90px Title}.basmala{font:80px Basmala}footer{text-align:center;font:30px sans-serif;margin-top:20px}
+#verse-overlay{position:absolute;inset:0;pointer-events:none;visibility:hidden}
+</style></head><body><main id="paper" aria-label="Coran Test, page ${page.page}"><div class="top"><span>Juz ${page.juz}</span><span class="surah">surah${String(page.surah).padStart(3,'0')}</span></div><div class="body">${lines}</div><footer>${String(page.page).replace(/\d/g,c=>'٠١٢٣٤٥٦٧٨٩'[Number(c)])}</footer><div id="verse-overlay" aria-hidden="true"></div></main><script>
+const paper=document.getElementById('paper');let scale=1;let start=null;
+const send=data=>{if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify(data));else window.parent.postMessage(data,'*')};
+function fit(){scale=Math.min(innerWidth/${originalPageWidth},innerHeight/${originalPageHeight});paper.style.transform='scale('+scale+')';paper.style.left=((innerWidth-${originalPageWidth}*scale)/2)+'px';paper.style.top=((innerHeight-${originalPageHeight}*scale)/2)+'px';}
+function ready(){fit();paper.style.visibility='visible';const p=paper.getBoundingClientRect();const words=[...document.querySelectorAll('.word')].map(w=>{const b=w.getBoundingClientRect();return {id:Number(w.dataset.id),key:w.dataset.verse,region:{x:(b.left-p.left)/p.width,y:(b.top-p.top)/p.height,width:b.width/p.width,height:b.height/p.height,line:Number(w.parentElement.dataset.line)}}});send({type:'ready',page:${page.page},words});}
+addEventListener('resize',ready);document.fonts.ready.then(ready).catch(()=>send({type:'error',page:${page.page}}));
+addEventListener('touchstart',e=>{const t=e.changedTouches[0];start={x:t.clientX,y:t.clientY};},{passive:true});
+addEventListener('touchend',e=>{if(!start)return;const t=e.changedTouches[0],dx=t.clientX-start.x,dy=t.clientY-start.y;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5)send({type:'swipe',dx,dy,fromEdge:start.x<20});start=null;},{passive:true});
+let pointer=null;addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')pointer={x:e.clientX,y:e.clientY}});addEventListener('pointerup',e=>{if(!pointer)return;const dx=e.clientX-pointer.x,dy=e.clientY-pointer.y;if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5)send({type:'swipe',dx,dy,fromEdge:pointer.x<20});pointer=null});
+</script></body></html>`;
+}
