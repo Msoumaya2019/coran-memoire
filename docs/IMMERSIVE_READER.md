@@ -64,3 +64,12 @@ sont fournis au compte rendu. Les essais sur appareils physiques restent à réa
    différente ; contrôler « Toute la page », traduction et changement automatique.
 6. Plus d’options → Lecture plein écran : toucher pour retrouver les commandes.
 7. Petits/grands iPhone et Android : safe areas, barres, swipe et ratio.
+
+## Compilations GitHub validées
+
+Code compilé : `3b5d6d36def77a3376392879c81e7cb14e9c22f8`.
+
+- [APK Android réussi](https://github.com/Msoumaya2019/coran-memoire/actions/runs/36408807127).
+- [IPA iOS non signée réussie](https://github.com/Msoumaya2019/coran-memoire/actions/runs/36408810583).
+- Version 0.9.25, build 37. Les artefacts sont disponibles dans chaque exécution.
+- Tests et TypeScript passent dans les deux workflows. Aucune migration Supabase.

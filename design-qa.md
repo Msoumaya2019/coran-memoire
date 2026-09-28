@@ -10,3 +10,12 @@
 - Les essais navigateur ne remplacent pas une validation sur iPhone et Android physiques : ces essais restent à réaliser.
 
 Capture : work-dist/coran-test-page10.png (artefact local non versionné).
+
+## Lecteur commun — version 0.9.25
+
+- Toutes les sources utilisent le même en-tête compact et les trois actions flottantes.
+- Coran Tajweed contrôlé sur 320×568 : commandes lisibles, menu, plein écran ; Médine sur 430×932.
+- Coran Test : traduction réelle, sélection de 2:66, deux zones de surlignage et un indicateur de marque-page, reprise page 10, lecteur audio partagé et changement de source.
+- TypeScript et 125 tests réussis, également dans le job iOS GitHub.
+- Aucun test audio/microphone physique n’est revendiqué ; appareils iPhone et Android à vérifier.
+- Captures de l’aperçu conservées localement dans work-dist ; certains captures du navigateur subissent une réduction liée à sa mise à l’échelle.
