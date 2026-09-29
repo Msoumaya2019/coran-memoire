@@ -4,18 +4,18 @@
     "slug": "coran-memoire",
     "owner": "scichiker",
     "scheme": "coranmemoire",
-    "version": "0.9.30",
+    "version": "0.9.31",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fr.coranmemoire.app",
-      "buildNumber": "42"
+      "buildNumber": "43"
     },
     "android": {
       "package": "fr.coranmemoire.app",
-      "versionCode": 42,
+      "versionCode": 43,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "SCHEDULE_EXACT_ALARM"

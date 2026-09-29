@@ -24,7 +24,8 @@ export type DifficultyMarker = { user?:{createdAt:string}; admin?:{createdAt:str
 export type DifficultyEvent = {verseId:number;date:string;origin:'user'|'admin';action:'marked'|'resolved';comment?:string};
 export type ReviewCycle = {index:number;startDate:string;lengthDays:7|14|21|30;corpus:number[];days:number[][];completed:number[];assignments:Record<string,number>};
 export type Consolidation = {learnedAt:string;completed:Partial<Record<1|3|7,string>>};
-export type AppState = { schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
+export type StudyProgress = Range & {id:string;mode:"learning"|"revision";category?:"recent"|"habitual"|"priority";through:number;page:number;source:string;updatedAt:string;status:"partial"|"completed";validations:{start:number;end:number;date:string;validatedAt?:string}[]};
+export type AppState = { studyProgress?:Record<string,StudyProgress>; schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -50,7 +51,7 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({schema:1,studyProgress:{},onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 // Keep the original source key: old Coran Test preferences and bookmarks stay valid.
 export function migrateReaderState(state:AppState):AppState{
   if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
@@ -60,13 +61,15 @@ export function reconcileState(local:AppState,remote:AppState|null):{state:AppSt
   local=migrateReaderState(local);if(remote)remote=migrateReaderState(remote);
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
+  const studyMetadataRecovered=remote.studyProgress===undefined&&Object.keys(local.studyProgress??{}).length>0;
+  remote={...remote,studyProgress:remote.studyProgress??local.studyProgress??{}};
   const reviewMetadataRecovered=(remote.reviewCycle===undefined&&!!local.reviewCycle)||(remote.reviewConsolidations===undefined&&Object.keys(local.reviewConsolidations??{}).length>0)||(remote.reviewPriorityDue===undefined&&Object.keys(local.reviewPriorityDue??{}).length>0);
   remote={...remote,reviewModelStartedAt:remote.reviewModelStartedAt??local.reviewModelStartedAt,reviewCycle:remote.reviewCycle===undefined?local.reviewCycle:remote.reviewCycle,reviewConsolidations:remote.reviewConsolidations??local.reviewConsolidations,reviewPriorityDue:remote.reviewPriorityDue??local.reviewPriorityDue};
   const audioPreferences=remote.audioPreferences??local.audioPreferences;
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks},shouldPush:true};
   const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader?(remote.reader.testPage===undefined&&local.reader?.testPage!==undefined?{...remote.reader,testPage:local.reader.testPage}:remote.reader):local.reader,lastRead=remote.lastRead??local.lastRead;
   const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
-  if(!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
+  if(!studyMetadataRecovered&&!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
   return {state:{...remote,bookmarks,audioPreferences,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
@@ -179,9 +182,11 @@ function splitContiguous(ids: number[]): Range[] {
   return result;
 }
 export function generateProgram(state: AppState, from=todayLocal(), days=20000): AppState {
-  const old=state.sessions.filter(s=>s.status!=='todo'||s.date<from).map(s=>s.status==='todo'?{...s,status:'postponed' as SessionStatus}:s);
+  const partial=(s:Session)=>state.studyProgress?.[`learning:${s.id}`]?.status==='partial';
+  const old=state.sessions.filter(s=>partial(s)||s.status!=='todo'||s.date<from).map(s=>s.status==='todo'&&!partial(s)?{...s,status:'postponed' as SessionStatus}:s);
   const scheduled=new Set(old.filter(s=>s.status==='done').flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i)));
   const known=new Set(memorizedIds(state));
+  for(const s of old.filter(partial))for(let id=s.start;id<=s.end;id++)scheduled.add(id);
   let remaining=learningOrderIds(state).filter(id=>!known.has(id)&&!scheduled.has(id));
   const sessions: Session[]=[];
   let serial=0;
@@ -233,9 +238,11 @@ export function gradeRevision(state:AppState,id:string,grade:'perfect'|'hesitant
 }
 export function completedHizbs(state:AppState):number {const known=new Set(memorizedIds(state));return hizbs.filter(h=>{for(let id=h.start;id<=h.end;id++)if(!known.has(id))return false;return true;}).length;}
 export function stats(state:AppState,at=todayLocal()) {
-  const done=state.sessions.filter(s=>s.status==='done'&&s.completedAt);
+  const tracked=Object.values(state.studyProgress??{}).filter(r=>r.mode==='learning');
+  const done=state.sessions.filter(s=>s.status==='done'&&s.completedAt&&!tracked.some(r=>r.id===s.id));
   const date=new Date(`${at}T12:00:00`);const weekStart=addDays(at,-((date.getDay()+6)%7));const monthStart=`${at.slice(0,7)}-01`;
   const dateOf=(s:Session)=>s.completedDate??s.completedAt!.slice(0,10);
-  const count=(start:string)=>done.filter(s=>dateOf(s)>=start&&dateOf(s)<=at).reduce((n,s)=>n+s.end-s.start+1,0);
-  return {today:count(at),week:count(weekStart),month:count(monthStart),days:new Set(done.map(dateOf)).size,revisions:state.revisions.reduce((n,r)=>n+r.completedCount,0),hizbs:completedHizbs(state),weeklySessions:done.filter(s=>dateOf(s)>=weekStart).length};
+  const validations=tracked.flatMap(r=>r.validations);
+  const count=(start:string)=>done.filter(s=>dateOf(s)>=start&&dateOf(s)<=at).reduce((n,s)=>n+s.end-s.start+1,0)+validations.filter(v=>v.date>=start&&v.date<=at).reduce((n,v)=>n+v.end-v.start+1,0);
+  return {today:count(at),week:count(weekStart),month:count(monthStart),days:new Set([...done.map(dateOf),...validations.map(v=>v.date)]).size,revisions:state.revisions.reduce((n,r)=>n+r.completedCount,0),hizbs:completedHizbs(state),weeklySessions:done.filter(s=>dateOf(s)>=weekStart).length+tracked.filter(r=>r.status==='completed'&&r.validations.at(-1)!.date>=weekStart&&r.validations.at(-1)!.date<=at).length};
 }

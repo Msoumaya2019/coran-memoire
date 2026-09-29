@@ -17,7 +17,7 @@ export function testPageRange(page:number):Range{if(!pageRanges[page])throw new 
 export const validTestPage=(page:number)=>Number.isInteger(page)&&page>=1&&page<=604;
 export const adjacentTestPages=(page:number)=>[page-1,page,page+1].filter(validTestPage);
 
-export type ReaderOverlayState={background?:string;enabled:boolean;selecting:boolean;playing:VerseKey|null;selected:VerseKey|null;bookmarks:VerseKey[];difficulty:VerseKey[];session:VerseKey[];primary:string;selection:string;gold:string};
+export type ReaderOverlayState={study?:{title:string;unit:string;range:string;ratio:number;primary:string;background:string};background?:string;enabled:boolean;selecting:boolean;playing:VerseKey|null;selected:VerseKey|null;bookmarks:VerseKey[];difficulty:VerseKey[];session:VerseKey[];primary:string;selection:string;gold:string};
 const keyOf=(id:number):VerseKey=>{const verse=verseAt(id);return `${verse.surah}:${verse.ayah}`;};
 export function readerOverlayState({playingVerseId,selectedVerseId,bookmarkIds=[],difficultyIds=[],sessionRange,showSession=false,selecting=false,primary,selection,gold}:{playingVerseId:number|null;selectedVerseId?:number|null;bookmarkIds?:number[];difficultyIds?:number[];sessionRange:Range;showSession?:boolean;selecting?:boolean;primary:string;selection:string;gold:string}):ReaderOverlayState{
  return {enabled:true,selecting,playing:playingVerseId===null?null:keyOf(playingVerseId),selected:selectedVerseId==null?null:keyOf(selectedVerseId),bookmarks:bookmarkIds.map(keyOf),difficulty:difficultyIds.map(keyOf),session:showSession?Array.from({length:sessionRange.end-sessionRange.start+1},(_,i)=>keyOf(sessionRange.start+i)):[],primary,selection,gold};

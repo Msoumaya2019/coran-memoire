@@ -41,7 +41,7 @@ test('neighbor preloading stays within the original page range',()=>{
 test('renderer contains original glyphs, invisible overlay, RTL and no visible controls',()=>{
  const html=testPageHtml(page(10),{page:'data:font/woff2;base64,AA==',title:'data:font/woff2;base64,AA==',basmala:'data:font/woff2;base64,AA=='});
  assert.match(html,/direction:rtl/);assert.match(html,/data-verse="2:66"/);assert.match(html,/verse-overlay/);assert.match(html,/visibility:hidden/);
- assert.doesNotMatch(html,/<(?:button|audio|video|nav|img)\b/);assert.match(html,/Math.min\(innerWidth\/1000,innerHeight\/2120\)/);
+ assert.doesNotMatch(html,/<(?:audio|video|nav|img)\b/);assert.equal((html.match(/<button\b/g)||[]).length,1);assert.match(html,/id="study-banner"/);assert.match(html,/\.study\{display:none/);assert.match(html,/Math.min\(innerWidth\/1000,innerHeight\/2120\)/);
  for(const word of page(10).lines.flatMap(l=>l.words))assert.ok(html.includes(word[4]));
 });
 test('future audio adapter uses existing reciter and repeat logic',async()=>{

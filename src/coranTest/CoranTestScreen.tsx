@@ -5,7 +5,7 @@ import {loadTestPage} from './loadPage';
 import {adjacentTestPages,MeasuredWord,verseRegions,ReaderOverlayState,verseIndex,VerseKey} from './model';
 import {pageAfterSwipe} from '../core/pageNavigation';
 
-export function CoranTestScreen({page,onPage,onClose,readerState,onVersePress,onVerseLongPress,onBlankLongPress,onTap}:{page:number;onPage:(page:number)=>void;onClose:()=>void;readerState?:ReaderOverlayState;onVersePress?:(id:number)=>void;onVerseLongPress?:(id:number)=>void;onBlankLongPress?:()=>void;onTap?:()=>void}){
+export function CoranTestScreen({page,onPage,onClose,readerState,onStudyPress,onVersePress,onVerseLongPress,onBlankLongPress,onTap}:{page:number;onPage:(page:number)=>void;onClose:()=>void;readerState?:ReaderOverlayState;onStudyPress?:()=>void;onVersePress?:(id:number)=>void;onVerseLongPress?:(id:number)=>void;onBlankLongPress?:()=>void;onTap?:()=>void}){
  const [pages,setPages]=useState<Record<number,string>>({}),[displayPage,setDisplayPage]=useState(page);
  const mounted=useRef(true);useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const readyPages=useRef(new Set<number>()),current=useRef(page),errorShown=useRef(false);
@@ -25,6 +25,7 @@ export function CoranTestScreen({page,onPage,onClose,readerState,onVersePress,on
      readyPages.current.add(target);overlay.current.set(target,verseRegions(data.words as MeasuredWord[]));
      for(const p of overlay.current.keys())if(!adjacentTestPages(current.current).includes(p)){overlay.current.delete(p);readyPages.current.delete(p);}
      if(target===current.current)setDisplayPage(target);
+   }else if(data.type==='study'&&target===displayPage){onStudyPress?.();
    }else if(data.type==='tap'&&target===displayPage){
      const id=typeof data.key==='string'?verseIndex[data.key as VerseKey]?.id:undefined;
      if(readerState?.selecting&&id!==undefined)onVersePress?.(id);else onTap?.();

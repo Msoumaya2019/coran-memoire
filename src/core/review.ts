@@ -131,7 +131,8 @@ export function reviewPlan(original:AppState,at=todayLocal()):ReviewPlan {
   const done=new Set(cycle?.completed??[]),index=cycle?.assignments[at]??-1;
   const habitualIds=(cycle?.days[index]??[]).filter(id=>known(state,id)&&!done.has(id)&&!today.has(id));
   const recent=grouped(recentIds,'recent'),priority=grouped(priorityIds,'priority'),habitual=grouped(habitualIds,'habitual'),seen=new Set<number>();
-  const session=[...recent,...priority,...habitual].flatMap(task=>grouped(idsOf([task]).filter(id=>{if(seen.has(id))return false;seen.add(id);return true;}),task.category));
+  const partials:ReviewTask[]=Object.values(state.studyProgress??{}).filter(r=>r.mode==='revision'&&r.status==='partial').flatMap(r=>{const pending=grouped(Array.from({length:r.end-r.through},(_,i)=>r.through+i+1).filter(id=>known(state,id)),r.category??'habitual');return pending.map(t=>({...t,id:r.id}));});
+  const session=[...partials,...recent,...priority,...habitual].flatMap(task=>grouped(idsOf([task]).filter(id=>{if(seen.has(id))return false;seen.add(id);return true;}),task.category).map(t=>partials.includes(task)?{...t,id:task.id}:t));
   return {...base,recent,priority,habitual,session,rework:grouped(all.filter(id=>!!(state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin)),'priority'),consolidations:rows};
 }
 export function gradeReviewTask(original:AppState,task:ReviewTask,grade:ReviewGrade,at=todayLocal()):AppState {
@@ -144,7 +145,7 @@ export function gradeReviewTask(original:AppState,task:ReviewTask,grade:ReviewGr
   const completed=new Set(cycle?.completed??[]),assigned=new Set(cycle?.days[cycle.assignments[at]]??[]);
   for(const id of ids){
     // Overlap is performed once and credited to each due mechanism.
-    if(assigned.has(id))completed.add(id);
+    if(assigned.has(id)||(task.category==='habitual'&&cycle?.corpus.includes(id)))completed.add(id);
     const c=consolidations[id];
     if(c){const offset=consolidationOffsets.find(o=>!c.completed[o]);if(offset&&addDays(c.learnedAt,offset)<=at)consolidations[id]={...c,completed:{...c.completed,[offset]:at}};}
     if(grade!=='perfect'){
