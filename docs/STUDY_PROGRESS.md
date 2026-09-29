@@ -17,3 +17,18 @@ Sourates et versets sont limités à la partie restante du programme. Le changem
 ## Vérifications
 
 TypeScript sans erreur et 160 tests réussis. Sur aperçu local : bannière QPC page 396, choix des deux sourates réellement présentes, versets 85–88 seulement pour Al Qasas, validation jusqu’à 87, Programme et reprise à 88 ; Annuler conserve 0/9 ; Révision pages 404–405 et validation de la page 404 ; petit écran 320×568 avec défilement de la fiche. Les rendus Rose Poudré et Bleu Nuit sont contrôlés. Les validations sur iPhone et Android réels restent nécessaires : safe areas, clavier/scroll des listes, audio, enregistrement et persistance après fermeture/reconnexion.
+
+## Fichiers concernés
+
+- `src/App.tsx` : lecteur, validation, navigation de reprise, Programme et statistiques.
+- `src/MushafPage.tsx`, `src/ReviewDashboard.tsx` : bandeau et cartes de reprise.
+- `src/coranTest/{CoranTestScreen.tsx,model.ts,html.ts}` : événement du bandeau et intégration dans la ligne originale du Mushaf.
+- `src/core/{program.ts,review.ts}` : persistance, séances partielles, consolidation et cycle.
+- Nouveau `src/core/studyProgress.ts` : bornes, unités, validation explicite et reprise.
+- Nouveau `src/ui/StudySession.tsx` : StudyBanner, StudyCompletionSheet et StudyResumeCard.
+- `tests/{study-progress.test.cjs,reader-zoom.test.cjs,coran-test.test.cjs}`, `package.json` : tests et compilation des modules métier.
+- `scripts/preview-design.cjs` : parcours de contrôle local, sans effet sur les données de production.
+- `app.json` : version 0.9.31, build 43.
+- Documentation : ce rapport, `design-qa.md`, captures dans `study-screenshots/`.
+
+Les compilations finales utilisent le commit 323dde6 ; les ajouts documentaires suivants ne changent pas le code compilé.
