@@ -207,7 +207,9 @@ export function seedInitialRevisions(state:AppState,from=todayLocal()):AppState 
   return touch({...state,revisions});
 }
 export function postponeSession(state: AppState,id:string,from=todayLocal()):AppState {
-  const sessions=state.sessions.map(s=>s.id===id?{...s,status:'postponed' as SessionStatus}:s);
+  const partial=state.studyProgress?.[`learning:${id}`]?.status==='partial';
+  let nextDate=addDays(from,1);while(partial&&!state.learningDays.includes(new Date(`${nextDate}T12:00:00`).getDay())&&state.learningDays.length)nextDate=addDays(nextDate,1);
+  const sessions=state.sessions.map(s=>s.id===id?partial?{...s,date:nextDate,status:'todo' as SessionStatus}:{...s,status:'postponed' as SessionStatus}:s);
   return generateProgram({...state,sessions},from);
 }
 export function completeSession(state: AppState,id:string,memorized:boolean,from=todayLocal()):AppState {

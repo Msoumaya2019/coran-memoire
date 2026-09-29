@@ -16,4 +16,4 @@ Sourates et versets sont limités à la partie restante du programme. Le changem
 
 ## Vérifications
 
-TypeScript et tests métier exécutés. Contrôle visuel et interactions sur aperçu local en cours au lancement des compilations. Les validations sur iPhone et Android réels restent nécessaires : safe areas, clavier/scroll des listes, audio, enregistrement et persistance après fermeture/reconnexion.
+TypeScript sans erreur et 160 tests réussis. Sur aperçu local : bannière QPC page 396, choix des deux sourates réellement présentes, versets 85–88 seulement pour Al Qasas, validation jusqu’à 87, Programme et reprise à 88 ; Annuler conserve 0/9 ; Révision pages 404–405 et validation de la page 404 ; petit écran 320×568 avec défilement de la fiche. Les rendus Rose Poudré et Bleu Nuit sont contrôlés. Les validations sur iPhone et Android réels restent nécessaires : safe areas, clavier/scroll des listes, audio, enregistrement et persistance après fermeture/reconnexion.
