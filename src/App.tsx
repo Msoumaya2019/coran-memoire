@@ -1,3 +1,6 @@
+import {QuranSourceTransition} from './core/quranSourceTransition';
+import {QuranSessionHeader} from './ui/QuranSessionHeader';
+import {ensureQuranSourcePage} from './services/quranSourceReady';
 import {GoalScreen} from './ui/GoalScreen';
 import {AppearanceScreen} from './ui/AppearanceScreen';
 import {Home,QuranScreen,ProgramScreen,ProgressScreen} from './ui/MainScreens';
@@ -11,7 +14,7 @@ import {observeOfflineSync,flushPendingSync} from './services/offlineSync';
 import {isZipSource,zipSources,zipPageData,zipVersePage,zipPageRange} from './core/quranSources';
 import {scheduledDate,upcomingSessions,weeklyProgress} from './core/weeklyProgress';
 import {completeConsolidation} from './core/review';
-import {StudyBanner,StudyCompletionSheet,StudyResumeCard} from './ui/StudySession';
+import {StudyCompletionSheet,StudyResumeCard} from './ui/StudySession';
 import {studyKey,studyMetrics,studyRangeLabel,remainingStudyRange,resumeStudyTask,validateStudyProgress} from './core/studyProgress';
 import {quranPaperOptions,quranPaperColor} from './core/readerAppearance';
 import {ZoomableReader} from './ui/ZoomableReader';
@@ -150,7 +153,7 @@ function AppContent(){
     };
     Notifications.getLastNotificationResponseAsync().then(response=>{if(response)open(response.notification.request.content.data);}).catch(()=>{});
     const response=Notifications.addNotificationResponseReceivedListener(event=>open(event.notification.request.content.data));
-    const received=Notifications.addNotificationReceivedListener(event=>{if(__DEV__)console.log('[Push] received',{platform:Platform.OS,kind:event.request.content.data?.kind,appState:DeviceAppState.currentState});});
+    const received=Notifications.addNotificationReceivedListener(event=>{if(typeof __DEV__!=='undefined'&&__DEV__)console.log('[Push] received',{platform:Platform.OS,kind:event.request.content.data?.kind,appState:DeviceAppState.currentState});});
     const tokens=Notifications.addPushTokenListener(()=>{if(loadState().notifications?.permissionExplained)registerPushDevice().catch(error=>console.warn('[Push] token refresh failed',error));});
     return()=>{response.remove();tokens.remove();received.remove();};
   },[]);
@@ -408,7 +411,11 @@ function ReaderScreen({reader,page,setPage,onClose,onHome,onChangeSurah,onShareR
   const [completionOpen,setCompletionOpen]=useState(false);
   const consolidationSubmitting=useRef(false);
   const [sourcePicker,setSourcePicker]=useState(false);
-  const mushaf=state.reader?.mushaf??'coranTest',immersive=mushaf==='coranTest';
+  const [mushaf,setMushaf]=useState<NonNullable<AppState['reader']>['mushaf']>(state.reader?.mushaf??'coranTest');
+  const immersive=mushaf==='coranTest';
+  const [pendingSource,setPendingSource]=useState<string|null>(null),[switchError,setSwitchError]=useState('');
+  const switching=useRef(false),readerAlive=useRef(true),sourceTransition=useRef(new QuranSourceTransition());
+  useEffect(()=>{readerAlive.current=true;sourceTransition.current=new QuranSourceTransition();return()=>{readerAlive.current=false;sourceTransition.current.dispose();};},[]);
   const [readerViewport,setReaderViewport]=useState({width:0,height:0});
   const [playingVerseId,setPlayingVerseId]=useState<number|null>(null);
   const [selectedVerse,setSelectedVerse]=useState<number|null>(null),[audioCommand,setAudioCommand]=useState<AudioCommand|null>(null),[commandSerial,setCommandSerial]=useState(0);
@@ -425,10 +432,27 @@ function ReaderScreen({reader,page,setPage,onClose,onHome,onChangeSurah,onShareR
   const currentSurah=surahs[verseAt(headingVerse).surah-1];
   const [sourceWidth,sourceHeight]=immersive?[originalPageWidth,originalPageHeight]:isZipSource(mushaf)?zipPageData(mushaf,page).dimensions:mushaf==='tajweedPages'?(tajweedDimensions as Record<string,number[]>)[String(page)]:[1920,3106];
   const showChrome=true;
-  const showPage=(next:number)=>{if(!recordingActive)setPage(next);};
+  const showPage=(next:number)=>{if(!recordingActive&&!switching.current)setPage(next);};
   const revealCommands=()=>{};
   const followAudio=(id:number|null)=>{setPlayingVerseId(id);if(id!==null&&state.reader?.followAudio!==false){const next=immersive?testVersePage(id,page):isZipSource(mushaf)?zipVersePage(mushaf,id,page):pageOf(id);if(next!==page)showPage(next);}};
   const audioAction=(id:number,action:AudioCommand['action'])=>{setAudioCommand({serial:commandSerial+1,id,action});setCommandSerial(commandSerial+1);setSelectedVerse(null);};
+  const changeQuranSource=async(source:NonNullable<AppState['reader']>['mushaf'])=>{
+   if(source===mushaf){setSourcePicker(false);return;}
+   if(switching.current||recordingActive)return;
+   switching.current=true;setPendingSource(source);setSwitchError('');setSourcePicker(false);
+   const currentPage=page;
+   if(typeof __DEV__!=='undefined'&&__DEV__)console.log('[QuranSwitch] requested',{source,page:currentPage});
+   try{
+    await sourceTransition.current.change(source,currentPage,ensureQuranSourcePage,()=>{
+    if(!readerAlive.current)return;
+    if(typeof __DEV__!=='undefined'&&__DEV__)console.log('[QuranSwitch] page ready',{source,page:currentPage});
+    setMushaf(source);setSessionPanel(null);
+    const latest=loadState();update(touch({...latest,reader:{...latest.reader,mushaf:source,followAudio:latest.reader?.followAudio!==false}}));
+    if(typeof __DEV__!=='undefined'&&__DEV__)console.log('[QuranSwitch] source committed',{source,page:currentPage});
+    });
+   }catch(error){console.error('[QuranSwitch]',{source,page:currentPage,error});if(readerAlive.current)setSwitchError('Cette source n’a pas pu être chargée. La source précédente est conservée. Réessaie.');}
+   finally{switching.current=false;if(readerAlive.current)setPendingSource(null);}
+  };
   const chooseMushaf=()=>setSourcePicker(true);
   const swipe=useMemo(()=>PanResponder.create({
     onMoveShouldSetPanResponder:(_,gesture)=>Math.abs(gesture.dx)>18&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.5,
@@ -452,18 +476,20 @@ function ReaderScreen({reader,page,setPage,onClose,onHome,onChangeSurah,onShareR
     const submitReview=(value:'perfect'|'hesitant'|'rework')=>{if(!allowPanelChange())return;stopActiveAudio();if(reader.reviewTask)onReviewDone(reader.reviewTask,value);else grade(value==='rework'?'errors':value);};
     const bookmarkIds=visibleBookmarks(state).map(b=>b.verseId);
     const bookmarkVerse=(id:number)=>{if(!bookmarkMode)return;update(saveBookmark(state,id,new Date().toISOString(),{source:mushaf,page}));setBookmarkMode(false);setBookmarkNotice('Marque-page enregistré');if(bookmarkTimer.current)clearTimeout(bookmarkTimer.current);bookmarkTimer.current=setTimeout(()=>setBookmarkNotice(''),2500);};
-    const fit=fitMushafPage(Math.max(1,readerViewport.width-4),Math.max(1,readerViewport.height-(focused&&isZipSource(mushaf)?48:0)),sourceWidth,sourceHeight);
+    const fit=fitMushafPage(Math.max(1,readerViewport.width-4),Math.max(1,readerViewport.height),sourceWidth,sourceHeight);
     const allowPanelChange=()=>{if(recordingActive){Alert.alert('Enregistrement en cours','Arrête l’enregistrement avant de changer de panneau.');return false;}return true;};
     const openPanel=(panel:'record'|'translation'|'options'|'session'|'verse'|'bookmarks')=>{if(!allowPanelChange())return;if(panel==='record'){stopActiveAudio();audioAction(headingVerse,'stop');}setSessionPanel(sessionPanel===panel?null:panel);};
     const openAudio=(settings=false)=>{if(!allowPanelChange())return;setBookmarkMode(false);setSessionPanel(null);audioAction(selectedVerse!==null&&sourcePageOf(selectedVerse)===page?selectedVerse:sourcePageOf(reader.range.start)===page?reader.range.start:sourcePageRange.start,settings===true?'settings':'open');};
     if(isZipSource(mushaf)&&!quranDownloaded())return <View style={{flex:1,justifyContent:'center'}}><QuranDownload onReady={()=>update(touch({...state}))} onBack={onClose}/></View>;
     if(bookmarksOpen)return <BookmarksScreen pageForBookmark={item=>sourceVersePage(mushaf,item.verseId,item.sourcePages?.[mushaf])} state={state} update={update} onClose={()=>setBookmarksOpen(false)} onResume={id=>{const resumePage=sourceVersePage(mushaf,id,state.bookmarks?.[id]?.sourcePages?.[mushaf]);update(useBookmark(state,id,new Date().toISOString(),resumePage));setBookmarksOpen(false);setSessionPanel(null);onChangeSurah(surahs[verseAt(id).surah-1]);showPage(resumePage);setSelectedVerse(id);}}/>;
 
-    return <View style={{flex:1,backgroundColor:colors.soft}}>
-
+    return <View style={{flex:1,width:'100%',alignSelf:'center',backgroundColor:colors.soft}}>
+      {focused&&<QuranSessionHeader type={reader.consolidation?'consolidation':learning?'learning':'revision'} range={plannedRange} through={studyThrough} source={mushaf} consolidationDay={consolidationOffset??undefined} onPress={()=>{if(allowPanelChange())reader.consolidation?setSessionPanel('session'):setCompletionOpen(true);}}/>}
+      {!!pendingSource&&<Label style={{fontSize:12,textAlign:'center',paddingVertical:4}}>Chargement du Coran…</Label>}
+      {!!switchError&&<Pressable onPress={()=>{setSwitchError('');setSourcePicker(true);}} style={{padding:8}}><Label style={{fontSize:12,color:colors.red}}>{switchError}</Label></Pressable>}
       <View onLayout={event=>{const {width,height}=event.nativeEvent.layout;setReaderViewport(previous=>previous.width===width&&previous.height===height?previous:{width,height});}} style={{flex:1,alignItems:'center',justifyContent:'flex-start',overflow:'hidden'}}>
-        {immersive?<View style={{position:'absolute',left:0,right:0,top:0,bottom:0}}><CoranTestScreen page={page} onPage={showPage} onClose={()=>{if(allowPanelChange())onClose();}} onStudyPress={()=>{if(allowPanelChange())reader.consolidation?setSessionPanel('session'):setCompletionOpen(true);}} readerState={{study:focused?{title:reader.consolidation?`Consolidation · J+${consolidationOffset??7}`:`${reader.consolidation?'Consolidation':learning?'Apprentissage':'Révision'} · ${studyInfo.done} / ${studyInfo.total} ${studyInfo.unit}`,unit:studyInfo.pages?'Pages':'Versets',range:studyInfo.pages?`${studyInfo.first} → ${studyInfo.last}`:studyRangeLabel(plannedRange),ratio:studyInfo.ratio,primary:colors.green,background:colors.selected}:undefined,background:quranPaperColor(state.reader?.paper),...readerOverlayState({playingVerseId,selectedVerseId:selectedVerse,bookmarkIds,difficultyIds:Object.keys(state.difficultyMarkers??{}).filter(id=>state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin).map(Number),sessionRange:plannedRange,sessionThrough:studyThrough,sessionColor:learning?colors.green:colors.review,showSession:focused,selecting:bookmarkMode,primary:colors.green,selection:colors.selected,gold:colors.gold})}} onVersePress={bookmarkVerse} onVerseLongPress={id=>{if(allowPanelChange()){setSelectedVerse(id);setSessionPanel('verse');}}} onBlankLongPress={()=>openPanel('options')} onTap={revealCommands}/></View>:readerViewport.width>0&&readerViewport.height>0&&<ZoomableReader reflow={mushaf==='tajweed'} key={`${mushaf}-${page}`} width={readerViewport.width} height={readerViewport.height}>{({zoomed,textScale,mapPoint,allowTap})=><ScrollView scrollEnabled={mushaf==='tajweed'} {...(zoomed?{}:swipe.panHandlers)} style={{width:readerViewport.width,height:mushaf==='tajweed'?readerViewport.height:fit.height,flexGrow:0}} contentContainerStyle={{alignItems:'center',flexGrow:mushaf==='tajweed'?1:0}}><MushafPage marginGutter={(readerViewport.width-fit.width)/2} studyBanner={focused&&mushaf==='tajweed'?<StudyBanner consolidationOffset={reader.consolidation?consolidationOffset:undefined} mode={studyMode} range={plannedRange} through={studyThrough} source={mushaf} onPress={()=>{if(allowPanelChange())reader.consolidation?setSessionPanel('session'):setCompletionOpen(true);}}/>:undefined} textScale={textScale} allowTap={allowTap} mapImagePoint={(event,callback)=>mapPoint(event,(x,y)=>callback(x-(readerViewport.width-fit.width)/2,y))} page={page} width={mushaf==='tajweed'?readerViewport.width:fit.width} height={mushaf==='tajweed'?readerViewport.height:fit.height} mode={mushaf} language="ar" playingVerseId={playingVerseId} difficultyIds={Object.keys(state.difficultyMarkers??{}).filter(id=>state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin).map(Number)} sessionRange={plannedRange} sessionThrough={studyThrough} sessionColor={learning?colors.green:colors.review} showSession={focused} bookmarkIds={bookmarkIds} onVersePress={bookmarkMode?bookmarkVerse:undefined} onVerseLongPress={id=>{if(allowPanelChange()){setSelectedVerse(id);setSessionPanel('verse');}}} onBlankLongPress={()=>openPanel('options')} onTap={revealCommands}/></ScrollView>}</ZoomableReader>}
-        {focused&&!immersive&&mushaf!=='tajweed'&&<View style={{position:'absolute',top:Math.min(fit.height+10,Math.max(0,readerViewport.height-50)),left:10,right:10}}><StudyBanner consolidationOffset={reader.consolidation?consolidationOffset:undefined} mode={studyMode} range={plannedRange} through={studyThrough} source={mushaf} onPress={()=>reader.consolidation?setSessionPanel('session'):setCompletionOpen(true)}/></View>}
+        {immersive?<View style={{position:'absolute',left:0,right:0,top:0,bottom:0}}><CoranTestScreen page={page} onPage={showPage} onClose={()=>{if(allowPanelChange())onClose();}} onStudyPress={()=>{if(allowPanelChange())reader.consolidation?setSessionPanel('session'):setCompletionOpen(true);}} readerState={{background:quranPaperColor(state.reader?.paper),...readerOverlayState({playingVerseId,selectedVerseId:selectedVerse,bookmarkIds,difficultyIds:Object.keys(state.difficultyMarkers??{}).filter(id=>state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin).map(Number),sessionRange:plannedRange,sessionThrough:studyThrough,sessionColor:colors.review,showSession:focused,selecting:bookmarkMode,primary:colors.green,selection:colors.selected,gold:colors.gold})}} onVersePress={bookmarkVerse} onVerseLongPress={id=>{if(allowPanelChange()){setSelectedVerse(id);setSessionPanel('verse');}}} onBlankLongPress={()=>openPanel('options')} onTap={revealCommands}/></View>:readerViewport.width>0&&readerViewport.height>0&&<ZoomableReader reflow={mushaf==='tajweed'} key={`${mushaf}-${page}`} width={readerViewport.width} height={readerViewport.height}>{({zoomed,textScale,mapPoint,allowTap})=><ScrollView scrollEnabled={mushaf==='tajweed'} {...(zoomed?{}:swipe.panHandlers)} style={{width:readerViewport.width,height:mushaf==='tajweed'?readerViewport.height:fit.height,flexGrow:0}} contentContainerStyle={{alignItems:'center',flexGrow:mushaf==='tajweed'?1:0}}><MushafPage marginGutter={(readerViewport.width-fit.width)/2} textScale={textScale} allowTap={allowTap} mapImagePoint={(event,callback)=>mapPoint(event,(x,y)=>callback(x-(readerViewport.width-fit.width)/2,y))} page={page} width={mushaf==='tajweed'?readerViewport.width:fit.width} height={mushaf==='tajweed'?readerViewport.height:fit.height} mode={mushaf} language="ar" playingVerseId={playingVerseId} difficultyIds={Object.keys(state.difficultyMarkers??{}).filter(id=>state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin).map(Number)} sessionRange={plannedRange} sessionThrough={studyThrough} sessionColor={colors.review} showSession={focused} bookmarkIds={bookmarkIds} onVersePress={bookmarkMode?bookmarkVerse:undefined} onVerseLongPress={id=>{if(allowPanelChange()){setSelectedVerse(id);setSessionPanel('verse');}}} onBlankLongPress={()=>openPanel('options')} onTap={revealCommands}/></ScrollView>}</ZoomableReader>}
+
 
       </View>
 {showChrome&&<View onLayout={event=>setSessionToolbarHeight(event.nativeEvent.layout.height)} style={{width:'100%',paddingHorizontal:6,paddingVertical:4}}><ReaderFloatingActions active={bookmarkMode||sessionPanel==='bookmarks'?'bookmark':sessionPanel==='record'?'record':sessionPanel==='options'?'options':audioDock?'audio':null} onHome={()=>{if(allowPanelChange())(onHome??onClose)();}} onRecord={()=>openPanel('record')} onMore={()=>openPanel('options')} disabled={recordingActive} onAudio={openAudio} onBookmark={()=>openPanel('bookmarks')}/></View>}
@@ -478,7 +504,7 @@ function ReaderScreen({reader,page,setPage,onClose,onHome,onChangeSurah,onShareR
         {sessionPanel==='bookmarks'&&<><Button onPress={()=>{setSessionPanel(null);setBookmarkMode(true);}}>Placer un marque-page sur un verset</Button><Button secondary onPress={()=>{setSessionPanel(null);setBookmarksOpen(true);}}>Mes marques-pages</Button></>}
       </ScrollView></View>}
       {sessionPanel==='options'&&<ReaderMoreSheet bottom={sessionToolbarHeight+8} onClose={()=>setSessionPanel(null)} onSurah={()=>{setSessionPanel(null);setSurahPicker(true);}} onTranslation={()=>openPanel('translation')} onAudio={()=>openAudio(true)} onDisplay={()=>{setSessionPanel(null);chooseMushaf();}}/>}
-      <Modal visible={sourcePicker} transparent animationType="fade" onRequestClose={()=>{setSourcePicker(false);setSessionPanel('options');}}><View style={{flex:1,justifyContent:'center',padding:24,backgroundColor:'rgba(0,0,0,0.3)'}}><Card><Label style={{fontWeight:'700',fontSize:20,marginBottom:15}}>Affichage du Coran</Label>{([{label:'Coran de Médine',mode:'traditional'},{label:'Coran avec règles de Tajwid',mode:'coranTest'},{label:'Lecture simplifiée',mode:'tajweed'},...zipSources.map(s=>({label:s.label,mode:s.id}))] as const).map(item=>isZipSource(item.mode)?<DownloadSourceChoice key={item.mode} selected={mushaf===item.mode} onSelect={()=>{setSourcePicker(false);setSessionPanel(null);setFullscreen(false);showPage(item.mode==='coranTest'?testVersePage(headingVerse,page):isZipSource(item.mode)?zipVersePage(item.mode,headingVerse):pageOf(headingVerse));update(touch({...state,reader:{...state.reader,mushaf:item.mode,followAudio:state.reader?.followAudio!==false}}));}}/>:<Button key={item.mode} secondary onPress={()=>{setSourcePicker(false);setSessionPanel(null);setFullscreen(false);showPage(item.mode==='coranTest'?testVersePage(headingVerse,page):isZipSource(item.mode)?zipVersePage(item.mode,headingVerse):pageOf(headingVerse));update(touch({...state,reader:{...state.reader,mushaf:item.mode,followAudio:state.reader?.followAudio!==false}}));}}>{item.label}</Button>)}{focused&&<Button secondary onPress={()=>{setSourcePicker(false);setSessionPanel('session');}}>Actions de la séance · {reference(reader.range)}</Button>}<Button secondary onPress={()=>{setSourcePicker(false);setSessionPanel('options');}}>Retour aux options</Button></Card></View></Modal>
+      <Modal visible={sourcePicker} transparent animationType="fade" onRequestClose={()=>{setSourcePicker(false);setSessionPanel('options');}}><View style={{flex:1,justifyContent:'center',padding:24,backgroundColor:'rgba(0,0,0,0.3)'}}><Card><Label style={{fontWeight:'700',fontSize:20,marginBottom:15}}>Affichage du Coran</Label>{([{label:'Coran de Médine',mode:'traditional'},{label:'Coran avec règles de Tajwid',mode:'coranTest'},{label:'Lecture simplifiée',mode:'tajweed'},...zipSources.map(s=>({label:s.label,mode:s.id}))] as const).map(item=>isZipSource(item.mode)?<DownloadSourceChoice key={item.mode} selected={mushaf===item.mode} onSelect={()=>{void changeQuranSource(item.mode);}}/>:<Button key={item.mode} secondary onPress={()=>{void changeQuranSource(item.mode);}}>{item.label}</Button>)}{focused&&<Button secondary onPress={()=>{setSourcePicker(false);setSessionPanel('session');}}>Actions de la séance · {reference(reader.range)}</Button>}<Button secondary onPress={()=>{setSourcePicker(false);setSessionPanel('options');}}>Retour aux options</Button></Card></View></Modal>
       {completionOpen&&focused&&studyId&&<StudyCompletionSheet key={`${studyId}-${studyThrough}`} mode={studyMode} range={plannedRange} through={studyThrough} source={mushaf} currentPage={page} onClose={()=>setCompletionOpen(false)} onValidate={validateStudy}/>}
       <SurahPicker visible={surahPicker} currentSurah={currentSurah.number} currentPage={page} onPage={next=>{setSurahPicker(false);showPage(next);}} onClose={()=>{setSurahPicker(false);setSessionPanel('options');}} onSelect={surah=>{stopActiveAudio();setPlayingVerseId(null);setAudioCommand(null);setSelectedVerse(null);setSessionPanel(null);setSurahPicker(false);onChangeSurah(surah);}}/>
     </View>;

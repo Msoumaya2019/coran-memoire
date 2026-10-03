@@ -1,0 +1,106 @@
+[
+  {
+    "mode": "reader",
+    "source": "traditional",
+    "center": 220,
+    "left": 4,
+    "right": 436,
+    "screen": 220
+  },
+  {
+    "mode": "learningPreview",
+    "source": "traditional",
+    "center": 220,
+    "left": 4,
+    "right": 436,
+    "screen": 220
+  },
+  {
+    "mode": "revisionPreview",
+    "source": "traditional",
+    "center": 220,
+    "left": 4,
+    "right": 436,
+    "screen": 220
+  },
+  {
+    "mode": "consolidationPreview",
+    "source": "traditional",
+    "center": 220,
+    "left": 4,
+    "right": 436,
+    "screen": 220
+  },
+  {
+    "mode": "reader",
+    "source": "coranTest",
+    "center": 219.9952850341797,
+    "left": 28.25,
+    "page": "Coran avec règles de Tajwid, page 396",
+    "right": 411.7405700683594,
+    "screen": 220
+  },
+  {
+    "mode": "learningPreview",
+    "source": "coranTest",
+    "center": 219.99312591552737,
+    "left": 41.92708587646485,
+    "page": "Coran avec règles de Tajwid, page 396",
+    "right": 398.05916595458984,
+    "screen": 220
+  },
+  {
+    "mode": "revisionPreview",
+    "source": "coranTest",
+    "center": 219.99312591552737,
+    "left": 41.92708587646485,
+    "page": "Coran avec règles de Tajwid, page 404",
+    "right": 398.05916595458984,
+    "screen": 220
+  },
+  {
+    "mode": "consolidationPreview",
+    "source": "coranTest",
+    "center": 219.99312591552737,
+    "left": 41.92708587646485,
+    "page": "Coran avec règles de Tajwid, page 396",
+    "right": 398.05916595458984,
+    "screen": 220
+  },
+  {
+    "mode": "reader",
+    "width": 375,
+    "source": "traditional",
+    "center": 187.5,
+    "left": 4,
+    "right": 371,
+    "screen": 187.5
+  },
+  {
+    "mode": "learningPreview",
+    "width": 375,
+    "source": "traditional",
+    "center": 187.5,
+    "left": 4,
+    "right": 371,
+    "screen": 187.5
+  },
+  {
+    "mode": "revisionPreview",
+    "width": 375,
+    "source": "traditional",
+    "center": 187.5,
+    "left": 4,
+    "right": 371,
+    "screen": 187.5
+  },
+  {
+    "mode": "consolidationPreview",
+    "width": 375,
+    "source": "traditional",
+    "center": 187.5,
+    "left": 4,
+    "right": 371,
+    "screen": 187.5
+  }
+]
