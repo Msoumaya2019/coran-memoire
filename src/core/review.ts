@@ -2,7 +2,7 @@ import {AppState, addDays, Consolidation, memorizedIds, ReviewCycle, ReviewEvent
 import {halves, hizbs, juzs, pageOf, pageRange, quarters, Range, surahAt, volume} from './quran';
 
 export type ReviewCategory='recent'|'habitual'|'priority';
-export type ReviewTask=Range&{id:string;category:ReviewCategory;label:string};
+export type ReviewTask=Range&{id:string;scheduledDate?:string;category:ReviewCategory;label:string};
 export const consolidationOffsets=[1,3,7] as const;
 export type ConsolidationRow=Range&{learnedAt:string;steps:{offset:1|3|7;due:string;completed?:string}[]};
 export type ReviewPlan={recent:ReviewTask[];habitual:ReviewTask[];priority:ReviewTask[];session:ReviewTask[];completeJuz:number;completeRub:number;completeNisf:number;cycle?:ReviewCycle;cycleDay:number;rework:ReviewTask[];consolidations:ConsolidationRow[]};
@@ -48,16 +48,16 @@ export function partitionReviewCorpus(corpus:number[],length:number):number[][] 
 function createCycle(state:AppState,at:string,index:number):ReviewCycle {
   // Learning during a cycle remains in consolidation until the next snapshot.
   const corpus=memorizedIds(state).filter(id=>{const learned=state.memorizedAt?.[id];if(!learned)return true;const established=learned<(state.reviewModelStartedAt??at)&&age(learned,state.reviewModelStartedAt??at)>=7;return established||!!state.reviewConsolidations?.[id]?.completed[7];}).sort((a,b)=>a-b);
-  return {index,startDate:at,lengthDays:reviewCycleDays(state),corpus,days:partitionReviewCorpus(corpus,reviewCycleDays(state)),completed:[],assignments:{}};
+  const result={index,startDate:at,lengthDays:reviewCycleDays(state) as number,corpus,days:state.reviewSettings?.mode==='quantity'?partitionDailyQuantity(corpus,state.reviewSettings.dailyQuantity??'hizb'):partitionReviewCorpus(corpus,reviewCycleDays(state)),completed:[],assignments:{}};if(state.reviewSettings?.mode==='quantity')result.lengthDays=Math.max(1,result.days.length);return result;
 }
 export function setReviewsEnabled(state:AppState,enabled:boolean,at=todayLocal()):AppState {
   if(reviewsEnabled(state)===enabled)return state;
   return touch({...state,reviewSettings:{...state.reviewSettings,enabled,cycleDays:reviewCycleDays(state),...(enabled?{resumedAt:at}:{})}});
 }
 export function setReviewCycle(state:AppState,cycleDays:7|14|21|30,at=todayLocal()):AppState {
-  if(reviewCycleDays(state)===cycleDays)return state;
-  const next={...state,reviewSettings:{...state.reviewSettings,enabled:reviewsEnabled(state),cycleDays}};
-  return touch({...next,reviewCycle:createCycle(next,at,(state.reviewCycle?.index??0)+1)});
+  if(reviewCycleDays(state)===cycleDays&&state.reviewSettings?.mode!=='quantity')return state;
+  const next={...state,reviewSettings:{...state.reviewSettings,enabled:reviewsEnabled(state),cycleDays,mode:'cycle' as const}};
+  return touch({...next,reviewCycleHistory:state.reviewCycle?[...(state.reviewCycleHistory??[]),state.reviewCycle]:state.reviewCycleHistory,reviewCycle:createCycle(next,at,(state.reviewCycle?.index??0)+1)});
 }
 export function toggleDifficulty(state:AppState,id:number,at=todayLocal()):AppState {
   if(id<1||id>6236)return state;
@@ -69,17 +69,17 @@ export function toggleDifficulty(state:AppState,id:number,at=todayLocal()):AppSt
 }
 function consolidationFor(state:AppState,id:number):Consolidation|undefined {
   const learnedAt=state.memorizedAt?.[id];if(!learnedAt)return;
-  const stored=state.reviewConsolidations?.[id];if(stored?.learnedAt===learnedAt)return stored;
+  const stored=state.reviewConsolidations?.[id];if(stored?.learnedAt===learnedAt)return stored.scheduledDates?stored:{...stored,scheduledDates:{1:addDays(learnedAt,1),3:addDays(learnedAt,3),7:addDays(learnedAt,7)}};
   // Migrate from real historical reviews only. No missed checkpoint is invented.
   const completed:Consolidation['completed']={};let previous='';
   const events=(state.reviewHistory??[]).filter(e=>e.start<=id&&e.end>=id&&e.date>=learnedAt).sort((a,b)=>a.date.localeCompare(b.date));
   for(const offset of consolidationOffsets){const event=events.find(e=>e.date>=addDays(learnedAt,offset)&&e.date>previous);if(!event)break;completed[offset]=event.date;previous=event.date;}
-  return {learnedAt,completed};
+  return {learnedAt,scheduledDates:{1:addDays(learnedAt,1),3:addDays(learnedAt,3),7:addDays(learnedAt,7)},completed};
 }
 export function prepareReviewSchedule(state:AppState,at=todayLocal()):AppState {
   if(!reviewsEnabled(state))return state;
   let cycle=state.reviewCycle,changed=!state.reviewModelStartedAt;
-  if(!cycle||cycle.lengthDays!==reviewCycleDays(state)){cycle=createCycle(state,at,(cycle?.index??0)+1);changed=true;}
+  if(!cycle||(state.reviewSettings?.mode!=='quantity'&&cycle.lengthDays!==reviewCycleDays(state))){cycle=createCycle(state,at,(cycle?.index??0)+1);changed=true;}
   const completed=new Set(cycle.completed);
   const finished=cycle.corpus.every(id=>completed.has(id)||!known(state,id));
   if(finished&&at>=addDays(cycle.startDate,cycle.lengthDays)) {cycle=createCycle(state,at,cycle.index+1);changed=true;}
@@ -92,7 +92,7 @@ export function prepareReviewSchedule(state:AppState,at=todayLocal()):AppState {
   }
   const consolidations={...state.reviewConsolidations};
   for(const id of memorizedIds(state)){const c=consolidationFor(state,id);if(c&&consolidations[id]!==c){consolidations[id]=c;changed=true;}}
-  return changed?touch({...state,reviewModelStartedAt:state.reviewModelStartedAt??at,reviewCycle:cycle,reviewConsolidations:consolidations}):state;
+  return changed?touch({...state,reviewModelStartedAt:state.reviewModelStartedAt??at,reviewCycleHistory:cycle?.index!==state.reviewCycle?.index&&state.reviewCycle?[...(state.reviewCycleHistory??[]),state.reviewCycle]:state.reviewCycleHistory,reviewCycle:cycle,reviewConsolidations:consolidations}):state;
 }
 function grouped(ids:number[],category:ReviewCategory):ReviewTask[] {
   const tasks:ReviewTask[]=[];
@@ -121,7 +121,7 @@ export function reviewPlan(original:AppState,at=todayLocal()):ReviewPlan {
   const recentIds:number[]=[],rows:ConsolidationRow[]=[];
   for(const id of all){
     const c=state.reviewConsolidations?.[id];if(!c||c.learnedAt!==state.memorizedAt?.[id]||c.completed[7])continue;
-    const steps=consolidationOffsets.map(offset=>({offset,due:addDays(c.learnedAt,offset),completed:c.completed[offset]}));
+    const steps=consolidationOffsets.map(offset=>({offset,due:c.scheduledDates?.[offset]??addDays(c.learnedAt,offset),completed:c.completed[offset]}));
     const pending=steps.find(s=>!s.completed);if(pending&&pending.due<=at&&!today.has(id))recentIds.push(id);
     const last=rows[rows.length-1];
     if(last&&last.end+1===id&&surahAt(last.start).number===surahAt(id).number&&last.learnedAt===c.learnedAt&&JSON.stringify(last.steps)===JSON.stringify(steps))last.end=id;
@@ -130,9 +130,9 @@ export function reviewPlan(original:AppState,at=todayLocal()):ReviewPlan {
   const priorityIds=all.filter(id=>(state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin)&&(state.reviewPriorityDue?.[id]??at)<=at&&!today.has(id));
   const done=new Set(cycle?.completed??[]),index=cycle?.assignments[at]??-1;
   const habitualIds=(cycle?.days[index]??[]).filter(id=>known(state,id)&&!done.has(id)&&!today.has(id));
-  const recent=grouped(recentIds,'recent'),priority=grouped(priorityIds,'priority'),habitual=grouped(habitualIds,'habitual'),seen=new Set<number>();
+  const recent=rows.flatMap(row=>grouped(idsOf([row]).filter(id=>recentIds.includes(id)),'recent').map(task=>({...task,scheduledDate:row.steps.find(step=>!step.completed)?.due}))),priority=grouped(priorityIds,'priority').map(task=>({...task,scheduledDate:state.reviewPriorityDue?.[task.start]??at})),habitual=grouped(habitualIds,'habitual').map(task=>({...task,scheduledDate:cycle&&index>=0?addDays(cycle.startDate,index):at})),seen=new Set<number>();
   const partials:ReviewTask[]=Object.values(state.studyProgress??{}).filter(r=>r.mode==='revision'&&r.status==='partial').flatMap(r=>{const pending=grouped(Array.from({length:r.end-r.through},(_,i)=>r.through+i+1).filter(id=>known(state,id)),r.category??'habitual');return pending.map(t=>({...t,id:r.id}));});
-  const session=[...partials,...recent,...priority,...habitual].flatMap(task=>grouped(idsOf([task]).filter(id=>{if(seen.has(id))return false;seen.add(id);return true;}),task.category).map(t=>partials.includes(task)?{...t,id:task.id}:t));
+  const session=[...partials,...recent,...priority,...habitual].flatMap(task=>grouped(idsOf([task]).filter(id=>{if(seen.has(id))return false;seen.add(id);return true;}),task.category).map(t=>({...t,scheduledDate:task.scheduledDate,id:partials.includes(task)?task.id:t.id})));
   return {...base,recent,priority,habitual,session,rework:grouped(all.filter(id=>!!(state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin)),'priority'),consolidations:rows};
 }
 export function gradeReviewTask(original:AppState,task:ReviewTask,grade:ReviewGrade,at=todayLocal()):AppState {
@@ -140,20 +140,19 @@ export function gradeReviewTask(original:AppState,task:ReviewTask,grade:ReviewGr
   const state=prepareReviewSchedule(original,at);
   const reviewed=new Set(idsOf((state.reviewHistory??[]).filter(e=>e.date===at)));
   const ids=idsOf([task]).filter(id=>known(state,id)&&!reviewed.has(id));if(!ids.length)return state;
-  const event:ReviewEvent={id:`${at}-${task.category}-${task.start}-${task.end}-${Date.now()}`,date:at,start:task.start,end:task.end,category:task.category,grade};
+  const event:ReviewEvent={id:`${at}-${task.category}-${task.start}-${task.end}-${Date.now()}`,date:at,scheduledDate:task.scheduledDate??at,completedAt:new Date().toISOString(),start:task.start,end:task.end,category:task.category,grade};
   const markers={...state.difficultyMarkers},due={...state.reviewPriorityDue},history=[...(state.difficultyHistory??[])],consolidations={...state.reviewConsolidations},cycle=state.reviewCycle;
   const completed=new Set(cycle?.completed??[]),assigned=new Set(cycle?.days[cycle.assignments[at]]??[]);
   for(const id of ids){
     // Overlap is performed once and credited to each due mechanism.
     if(assigned.has(id)||(task.category==='habitual'&&cycle?.corpus.includes(id)))completed.add(id);
     const c=consolidations[id];
-    if(c){const offset=consolidationOffsets.find(o=>!c.completed[o]);if(offset&&addDays(c.learnedAt,offset)<=at)consolidations[id]={...c,completed:{...c.completed,[offset]:at}};}
+    if(c){const offset=consolidationOffsets.find(o=>!c.completed[o]);if(offset&&addDays(c.learnedAt,offset)<=at)consolidations[id]={...c,completed:{...c.completed,[offset]:at},completedAt:{...c.completedAt,[offset]:new Date().toISOString()}};}
     if(grade!=='perfect'){
       if(!markers[id]?.user){markers[id]={...markers[id],user:{createdAt:at}};history.push({verseId:id,date:at,origin:'user',action:'marked'});}
       due[id]=addDays(at,grade==='rework'?1:2);
     }else {
-      if(markers[id]?.user){const current={...markers[id]};delete current.user;if(current.admin)markers[id]=current;else delete markers[id];history.push({verseId:id,date:at,origin:'user',action:'resolved'});}
-      if(markers[id]?.admin)due[id]=addDays(at,reviewCycleDays(state));else delete due[id];
+      if(markers[id]?.user||markers[id]?.admin)due[id]=addDays(at,reviewCycleDays(state));else delete due[id];
     }
   }
   return touch({...state,reviewCycle:cycle?{...cycle,completed:[...completed].sort((a,b)=>a-b)}:cycle,reviewConsolidations:consolidations,reviewPriorityDue:due,difficultyMarkers:markers,difficultyHistory:history,reviewHistory:[...(state.reviewHistory??[]),event]});
@@ -166,4 +165,27 @@ export function reviewRhythm(cycle:ReviewCycle):string {
  }
  const pages=cycle.corpus.reduce((n,id)=>n+reviewWeight(id),0)/cycle.lengthDays;
  return pages>=1?`≈ ${pages.toLocaleString('fr-FR',{maximumFractionDigits:1})} pages / jour`:`≈ ${(cycle.corpus.length/cycle.lengthDays).toLocaleString('fr-FR',{maximumFractionDigits:1})} versets / jour`;
+}
+
+/** Daily quantities follow real Quran divisions; unknown gaps are never scheduled. */
+export function partitionDailyQuantity(corpus:number[],quantity:'nisf'|'hizb'|'juz'|'juz2'):number[][] {
+ const units=quantity==='nisf'?halves:quantity==='hizb'?hizbs:juzs;
+ const groups=units.map(r=>corpus.filter(id=>id>=r.start&&id<=r.end)).filter(ids=>ids.length);
+ return quantity==='juz2'?groups.reduce<number[][]>((out,ids,i)=>{if(i%2)out[out.length-1].push(...ids);else out.push([...ids]);return out;},[]):groups;
+}
+export function setReviewQuantity(state:AppState,quantity:'nisf'|'hizb'|'juz'|'juz2',at=todayLocal()):AppState {
+ const next={...state,reviewSettings:{...state.reviewSettings,enabled:reviewsEnabled(state),cycleDays:reviewCycleDays(state),mode:'quantity' as const,dailyQuantity:quantity}};
+ return touch({...next,reviewCycleHistory:state.reviewCycle?[...(state.reviewCycleHistory??[]),state.reviewCycle]:state.reviewCycleHistory,reviewCycle:createCycle(next,at,(state.reviewCycle?.index??0)+1)});
+}
+/** Explicit consolidation may happen early; dates stay anchored to learning. */
+export function completeConsolidation(original:AppState,range:Range,at=todayLocal(),completedAt=new Date().toISOString(),targetOffset?:1|3|7):AppState {
+ const state=prepareReviewSchedule(original,at),consolidations={...state.reviewConsolidations},events=[...(state.consolidationHistory??[])];
+ for(let id=range.start;id<=range.end;id++){
+  if(!known(state,id))continue;
+  const c=consolidationFor(state,id);if(!c)continue;
+  const offset=consolidationOffsets.find(o=>!c.completed[o]);if(!offset||targetOffset!==undefined&&targetOffset!==offset)continue;
+  consolidations[id]={...c,completed:{...c.completed,[offset]:at},completedAt:{...c.completedAt,[offset]:completedAt}};
+  events.push({id:`${id}-${c.learnedAt}-${offset}`,verseId:id,offset,learnedAt:c.learnedAt,scheduledDate:c.scheduledDates?.[offset]??addDays(c.learnedAt,offset),completedAt});
+ }
+ return touch({...state,reviewConsolidations:consolidations,consolidationHistory:events});
 }

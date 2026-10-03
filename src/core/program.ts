@@ -7,7 +7,7 @@ export type Mastery = 'perfect' | 'review' | 'learning';
 export type Pace = 'verse1' | 'verse2' | 'verse3' | 'verse4' | 'verse5' | 'halfPage' | 'page' | 'page2' | 'toumoun' | 'quarter' | 'halfHizb' | 'hizb';
 export type PacePreset = 'beginner' | 'intermediate' | 'intensive';
 export type SessionStatus = 'todo' | 'done' | 'postponed';
-export type Session = { id: string; date: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
+export type Session = { id: string; date: string; scheduledDate?: string; start: number; end: number; unit: Pace; status: SessionStatus; completedAt?: string; completedDate?: string };
 export type Revision = { id: string; start: number; end: number; due: string; interval: number; streak: number; lastGrade?: 'perfect'|'hesitant'|'errors'|'relearn'; completedCount: number };
 export type LearningDirection = 'fromStart' | 'fromNas';
 export type Goal = { label: string; ranges: Range[]; direction?: LearningDirection };
@@ -16,16 +16,17 @@ export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
-export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; resumedAt?:string };
+export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'|'tawjeed_test_2'|'medine_test'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
+export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; mode?:'cycle'|'quantity'; dailyQuantity?:'nisf'|'hizb'|'juz'|'juz2'; resumedAt?:string };
 export type ReviewGrade = 'perfect'|'hesitant'|'rework';
-export type ReviewEvent = { id:string; date:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
+export type ReviewEvent = { id:string; date:string; scheduledDate?:string;completedAt?:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
 export type DifficultyMarker = { user?:{createdAt:string}; admin?:{createdAt:string;comment?:string} };
 export type DifficultyEvent = {verseId:number;date:string;origin:'user'|'admin';action:'marked'|'resolved';comment?:string};
-export type ReviewCycle = {index:number;startDate:string;lengthDays:7|14|21|30;corpus:number[];days:number[][];completed:number[];assignments:Record<string,number>};
-export type Consolidation = {learnedAt:string;completed:Partial<Record<1|3|7,string>>};
+export type ReviewCycle = {index:number;startDate:string;lengthDays:number;corpus:number[];days:number[][];completed:number[];assignments:Record<string,number>};
+export type Consolidation = {learnedAt:string;scheduledDates?:Record<1|3|7,string>;completed:Partial<Record<1|3|7,string>>;completedAt?:Partial<Record<1|3|7,string>>};
 export type StudyProgress = Range & {id:string;mode:"learning"|"revision";category?:"recent"|"habitual"|"priority";through:number;page:number;source:string;updatedAt:string;status:"partial"|"completed";validations:{start:number;end:number;date:string;validatedAt?:string}[]};
-export type AppState = { studyProgress?:Record<string,StudyProgress>; schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
+export type ConsolidationEvent={id:string;verseId:number;offset:1|3|7;learnedAt:string;scheduledDate:string;completedAt:string};
+export type AppState = { reviewCycleHistory?:ReviewCycle[];consolidationHistory?:ConsolidationEvent[]; studyProgress?:Record<string,StudyProgress>; schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -51,9 +52,10 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
   };
   return {label:goalPresetLabels[preset],ranges:ranges[preset],direction};
 }
-export const defaultState = (): AppState => ({schema:1,studyProgress:{},onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
+export const defaultState = (): AppState => ({reviewCycleHistory:[],consolidationHistory:[],schema:1,studyProgress:{},onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 // Keep the original source key: old Coran Test preferences and bookmarks stay valid.
 export function migrateReaderState(state:AppState):AppState{
+  if(state.sessions.some(s=>!s.scheduledDate))state={...state,sessions:state.sessions.map(s=>s.scheduledDate?s:{...s,scheduledDate:s.date})};
   if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
   return {...state,reader:{...state.reader,mushaf:'coranTest',followAudio:state.reader?.followAudio!==false}};
 }
@@ -62,7 +64,7 @@ export function reconcileState(local:AppState,remote:AppState|null):{state:AppSt
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
   const studyMetadataRecovered=remote.studyProgress===undefined&&Object.keys(local.studyProgress??{}).length>0;
-  remote={...remote,studyProgress:remote.studyProgress??local.studyProgress??{}};
+  remote={...remote,reviewCycleHistory:remote.reviewCycleHistory??local.reviewCycleHistory,consolidationHistory:remote.consolidationHistory??local.consolidationHistory,studyProgress:remote.studyProgress??local.studyProgress??{}};
   const reviewMetadataRecovered=(remote.reviewCycle===undefined&&!!local.reviewCycle)||(remote.reviewConsolidations===undefined&&Object.keys(local.reviewConsolidations??{}).length>0)||(remote.reviewPriorityDue===undefined&&Object.keys(local.reviewPriorityDue??{}).length>0);
   remote={...remote,reviewModelStartedAt:remote.reviewModelStartedAt??local.reviewModelStartedAt,reviewCycle:remote.reviewCycle===undefined?local.reviewCycle:remote.reviewCycle,reviewConsolidations:remote.reviewConsolidations??local.reviewConsolidations,reviewPriorityDue:remote.reviewPriorityDue??local.reviewPriorityDue};
   const audioPreferences=remote.audioPreferences??local.audioPreferences;
@@ -195,7 +197,7 @@ export function generateProgram(state: AppState, from=todayLocal(), days=20000):
     if(!state.learningDays.includes(dayOf(date)))continue;
     const chunk=nextChunk(remaining,state.pace);
     remaining=remaining.slice(chunk.length);
-    for(const range of splitContiguous(chunk))sessions.push({id:`${date}-${range.start}-${serial++}`,date,...range,unit:state.pace,status:'todo'});
+    for(const range of splitContiguous(chunk))sessions.push({id:`${date}-${range.start}-${serial++}`,date,scheduledDate:date,...range,unit:state.pace,status:'todo'});
   }
   return touch({...state,sessions:[...old,...sessions].sort((a,b)=>a.date.localeCompare(b.date))});
 }
@@ -207,10 +209,9 @@ export function seedInitialRevisions(state:AppState,from=todayLocal()):AppState 
   return touch({...state,revisions});
 }
 export function postponeSession(state: AppState,id:string,from=todayLocal()):AppState {
-  const partial=state.studyProgress?.[`learning:${id}`]?.status==='partial';
-  let nextDate=addDays(from,1);while(partial&&!state.learningDays.includes(new Date(`${nextDate}T12:00:00`).getDay())&&state.learningDays.length)nextDate=addDays(nextDate,1);
-  const sessions=state.sessions.map(s=>s.id===id?partial?{...s,date:nextDate,status:'todo' as SessionStatus}:{...s,status:'postponed' as SessionStatus}:s);
-  return generateProgram({...state,sessions},from);
+ const partial=state.studyProgress?.[`learning:${id}`]?.status==='partial';
+ // Skipping affects status, never the original schedule or neighbouring sessions.
+ return touch({...state,sessions:state.sessions.map(s=>s.id===id?{...s,status:partial?'todo':'postponed'}:s)});
 }
 export function completeSession(state: AppState,id:string,memorized:boolean,from=todayLocal()):AppState {
   const session=state.sessions.find(s=>s.id===id);
@@ -222,7 +223,18 @@ export function completeSession(state: AppState,id:string,memorized:boolean,from
   const revisions=[...updated.revisions];
   if(!revisions.some(r=>r.id===`r-${session.start}-${session.end}`))revisions.push({id:`r-${session.start}-${session.end}`,start:session.start,end:session.end,due:addDays(from,1),interval:1,streak:0,completedCount:0});
   const sessions=updated.sessions.map(s=>s.id===id?{...s,status:'done' as SessionStatus,completedAt:new Date().toISOString(),completedDate:from}:s);
-  return generateProgram({...updated,sessions,revisions},from);
+  return extendLearningProgram(touch({...updated,sessions,revisions}));
+}
+
+/** Append an exhausted/legacy short plan without rebuilding any existing date. */
+export function extendLearningProgram(state:AppState):AppState {
+ const covered=new Set(state.sessions.filter(s=>s.status==='todo'||s.status==='done').flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i)));
+ if(!learningOrderIds(state).some(id=>!covered.has(id)&&state.knowledge[id]!=='perfect'&&state.knowledge[id]!=='review'))return state;
+ const knowledge={...state.knowledge};for(const id of covered)knowledge[id]='perfect';
+ const latest=state.sessions.map(s=>s.scheduledDate??s.date).sort().at(-1);
+ const start=latest?addDays(latest,1):todayLocal();
+ const extension=generateProgram({...state,knowledge,sessions:[]},start);
+ return touch({...state,sessions:[...state.sessions,...extension.sessions]});
 }
 export function gradeRevision(state:AppState,id:string,grade:'perfect'|'hesitant'|'errors'|'relearn',from=todayLocal()):AppState {
   const revisions=state.revisions.map(r=>{

@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {authStorage} from './authStorage';
 import { createClient, processLock } from '@supabase/supabase-js';
 import { AppState } from '../core/program';
 
@@ -7,7 +7,8 @@ const url=process.env.EXPO_PUBLIC_SUPABASE_URL;
 const key=process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 export const syncConfigured=Boolean(url&&key);
 export const supabase=syncConfigured?createClient(url!,key!,{
-  auth:{storage:AsyncStorage,autoRefreshToken:true,persistSession:true,detectSessionInUrl:false,lock:processLock}
+  global:{fetch:async(input,init)=>{const controller=new AbortController();const abort=()=>controller.abort();init?.signal?.addEventListener('abort',abort);const timer=setTimeout(abort,8000);try{return await fetch(input,{...init,signal:controller.signal});}finally{clearTimeout(timer);init?.signal?.removeEventListener('abort',abort);}}},
+  auth:{storage:authStorage,autoRefreshToken:true,persistSession:true,detectSessionInUrl:false,lock:processLock}
 }):null;
 const mobileAuthRedirect='coranmemoire://auth';
 
@@ -55,7 +56,7 @@ export async function pullState():Promise<AppState|null>{
 let pendingPush:Promise<void>=Promise.resolve();
 export function pushState(state:AppState):Promise<void>{
   const next=pendingPush.catch(()=>{}).then(async()=>{
-    if(!supabase)return;
+    if(!supabase)throw new Error('Synchronisation indisponible');
     const user=await currentUser();if(!user)throw new Error('Connecte-toi pour synchroniser tes données.');
     if(state.userId!==user.id)throw new Error('Ces données appartiennent à un autre compte.');
     const {error}=await supabase.from('user_state').upsert({user_id:user.id,data:state,updated_at:state.updatedAt});

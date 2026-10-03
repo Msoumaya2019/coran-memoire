@@ -1,12 +1,13 @@
+import {isZipSource,zipVersePage,zipVersePages,zipPageRange} from './quranSources';
 import {AppState,StudyProgress,completeSession,markKnowledge,touch,addDays,todayLocal} from './program';
 import {gradeReviewTask,ReviewTask} from './review';
 import {Range,pageOf,pageRange,surahs,verseAt,reference} from './quran';
 import {testVersePage,testPageRange,verseIndex} from '../coranTest/model';
 export type StudyMode='learning'|'revision';
 export const studyKey=(mode:StudyMode,id:string)=>`${mode}:${id}`;
-export const studyPage=(id:number,source:string)=>source==='coranTest'?testVersePage(id):pageOf(id);
-export const studyPageRange=(page:number,source:string)=>source==='coranTest'?testPageRange(page):pageRange(page);
-export const studyLastPage=(id:number,source:string)=>{const v=verseAt(id);return source==='coranTest'?verseIndex[`${v.surah}:${v.ayah}`].pages.at(-1)!:pageOf(id);};
+export const studyPage=(id:number,source:string)=>source==='coranTest'?testVersePage(id):isZipSource(source)?zipVersePage(source,id):pageOf(id);
+export const studyPageRange=(page:number,source:string)=>source==='coranTest'?testPageRange(page):isZipSource(source)?zipPageRange(source,page):pageRange(page);
+export const studyLastPage=(id:number,source:string)=>{const v=verseAt(id);return source==='coranTest'?verseIndex[`${v.surah}:${v.ayah}`].pages.at(-1)!:isZipSource(source)?zipVersePages(source,id).at(-1)??zipVersePage(source,id):pageOf(id);};
 export function studyEndpointForPage(page:number,range:Range,source:string){let id=Math.min(range.end,studyPageRange(page,source).end);while(id>=range.start&&studyLastPage(id,source)>page)id--;return id;}
 export function studyMetrics(range:Range,through:number,source:string){
  const first=studyPage(range.start,source),last=studyLastPage(range.end,source),pages=last>first;

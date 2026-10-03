@@ -48,16 +48,16 @@ test('qualité indépendante du cycle, hésitations et difficulté reviennent ra
  let s=r.prepareReviewSchedule(stateFor(ids(q.hizbs[0])),at);const task=r.reviewPlan(s,at).habitual[0];s=r.gradeReviewTask(s,task,'hesitant',at);
  assert(s.reviewCycle.completed.includes(task.start));assert.equal(s.reviewPriorityDue[task.start],'2026-09-23');assert(s.difficultyMarkers[task.start].user);
  s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-23').priority[0],'rework','2026-09-23');assert.equal(s.reviewPriorityDue[task.start],'2026-09-24');
- s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-24').priority[0],'perfect','2026-09-24');assert.equal(s.difficultyMarkers[task.start],undefined);assert.deepEqual(s.reviewHistory.map(e=>e.grade),['hesitant','rework','perfect']);
+ s=r.gradeReviewTask(s,r.reviewPlan(s,'2026-09-24').priority[0],'perfect','2026-09-24');assert(s.difficultyMarkers[task.start].user);assert.deepEqual(s.reviewHistory.map(e=>e.grade),['hesitant','rework','perfect']);
 });
 test('ordre consolidation, priorité, cycle ; recouvrement crédité une fois et idempotence',()=>{
  let s=stateFor([1,2,3,6236]);s.memorizedAt={6236:p.addDays(at,-1)};s=r.toggleDifficulty(s,6236,at);s=r.toggleDifficulty(s,2,at);s=r.prepareReviewSchedule(s,at);
  const plan=r.reviewPlan(s,at);assert.equal(plan.session[0].category,'recent');const proposed=taskIds(plan.session);assert.equal(proposed.length,new Set(proposed).size);
- const recent=plan.session[0];s=r.gradeReviewTask(s,recent,'perfect',at);const length=s.reviewHistory.length;s=r.gradeReviewTask(s,recent,'perfect',at);assert.equal(s.reviewHistory.length,length);assert.equal(s.difficultyMarkers[6236],undefined);
+ const recent=plan.session[0];s=r.gradeReviewTask(s,recent,'perfect',at);const length=s.reviewHistory.length;s=r.gradeReviewTask(s,recent,'perfect',at);assert.equal(s.reviewHistory.length,length);assert(s.difficultyMarkers[6236].user);
 });
 test('désactivation et changement de cycle préservent historiques, dates et marqueur professeur',()=>{
  let s=stateFor([6236]);s.difficultyMarkers={6236:{admin:{createdAt:at,comment:'Respiration'}}};s=r.toggleDifficulty(s,6236,at);s=r.prepareReviewSchedule(s,at);s=r.gradeReviewTask(s,r.reviewPlan(s,at).session[0],'perfect',at);
- assert.equal(s.difficultyMarkers[6236].user,undefined);assert.equal(s.difficultyMarkers[6236].admin.comment,'Respiration');const history=JSON.stringify(s.reviewHistory);
+ assert(s.difficultyMarkers[6236].user);assert.equal(s.difficultyMarkers[6236].admin.comment,'Respiration');const history=JSON.stringify(s.reviewHistory);
  const off=r.setReviewsEnabled(s,false);assert.equal(r.reviewPlan(off).session.length,0);s=r.setReviewsEnabled(off,true);s=r.setReviewCycle(s,14,at);assert.equal(s.reviewCycle.lengthDays,14);assert.equal(JSON.stringify(s.reviewHistory),history);
 });
 test('unités fidèles : Hizb, Nisf, Rubu’, pages, versets ; incomplet jamais nommé complet',()=>{

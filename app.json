@@ -4,18 +4,18 @@
     "slug": "coran-memoire",
     "owner": "scichiker",
     "scheme": "coranmemoire",
-    "version": "0.9.31",
+    "version": "0.9.32",
     "icon": "./assets/icon.png",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "fr.coranmemoire.app",
-      "buildNumber": "43"
+      "buildNumber": "44"
     },
     "android": {
       "package": "fr.coranmemoire.app",
-      "versionCode": 43,
+      "versionCode": 44,
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "SCHEDULE_EXACT_ALARM"
@@ -39,17 +39,18 @@
         "expo-audio",
         {
           "recordAudioAndroid": true,
-          "microphonePermission": "Autoriser Apprendre le Coran à enregistrer votre récitation pour le suivi de votre apprentissage.",
+          "microphonePermission": "Autoriser Apprendre le Coran Ã  enregistrer votre rÃ©citation pour le suivi de votre apprentissage.",
           "enableBackgroundPlayback": true
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Autoriser Apprendre le Coran à choisir une photo de profil ou une illustration pour les rappels et invocations.",
+          "photosPermission": "Autoriser Apprendre le Coran Ã  choisir une photo de profil ou une illustration pour les rappels et invocations.",
           "cameraPermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }
