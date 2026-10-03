@@ -16,7 +16,7 @@ export type PersonalProfile = { sex: 'Homme' | 'Femme'; firstName: string };
 export type AppTheme = 'classic' | 'feminine' | 'lilac' | 'night';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'|'tawjeed_test_2'|'medine_test'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
+export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'|'coran_1441'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; mode?:'cycle'|'quantity'; dailyQuantity?:'nisf'|'hizb'|'juz'|'juz2'; resumedAt?:string };
 export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; scheduledDate?:string;completedAt?:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
@@ -55,6 +55,7 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
 export const defaultState = (): AppState => ({reviewCycleHistory:[],consolidationHistory:[],schema:1,studyProgress:{},onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'lilac',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 // Keep the original source key: old Coran Test preferences and bookmarks stay valid.
 export function migrateReaderState(state:AppState):AppState{
+  if(['tawjeed_test_2','tajweed_test_2','medine_test'].includes(state.reader?.mushaf as string))state={...state,reader:{...state.reader!,mushaf:'coran_1441'}};
   if(state.sessions.some(s=>!s.scheduledDate))state={...state,sessions:state.sessions.map(s=>s.scheduledDate?s:{...s,scheduledDate:s.date})};
   if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
   return {...state,reader:{...state.reader,mushaf:'coranTest',followAudio:state.reader?.followAudio!==false}};

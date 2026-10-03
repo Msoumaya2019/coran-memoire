@@ -1,14 +1,12 @@
-import tawjeedBounds from '../data/quran-tests/tawjeed_test_2-bounds.json';
-import medineBounds from '../data/quran-tests/medine_test-bounds.json';
-import tawjeedDimensions from '../data/quran-tests/tawjeed_test_2-dimensions.json';
-import medineDimensions from '../data/quran-tests/medine_test-dimensions.json';
+import sourceBounds from '../data/quran-tests/coran_1441-bounds.json';
+import sourceDimensions from '../data/quran-tests/coran_1441-dimensions.json';
 import {verseId} from './quran';
-export type ZipSource='tawjeed_test_2'|'medine_test';
-export const zipSources=[{id:'tawjeed_test_2',label:'Tawjeed test 2'},{id:'medine_test',label:'Medine Test'}] as const;
-export const isZipSource=(source:string):source is ZipSource=>source==='tawjeed_test_2'||source==='medine_test';
+export type ZipSource='coran_1441';
+export const zipSources=[{id:'coran_1441',label:'Coran 1441'}] as const;
+export const isZipSource=(source:string):source is ZipSource=>source==='coran_1441';
 export function zipPageData(source:ZipSource,page:number){
- const bounds=(source==='tawjeed_test_2'?tawjeedBounds:medineBounds) as Record<string,number[][]>;
- const dimensions=(source==='tawjeed_test_2'?tawjeedDimensions:medineDimensions) as Record<string,number[]>;
+ const bounds=sourceBounds as Record<string,number[][]>;
+ const dimensions=sourceDimensions as Record<string,number[]>;
  return {rows:bounds[page]??[],dimensions:dimensions[page]??[1,1]};
 }
 const indexes:Partial<Record<ZipSource,Map<number,number[]>>>={};

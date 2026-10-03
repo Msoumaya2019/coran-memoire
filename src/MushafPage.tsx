@@ -1,6 +1,7 @@
 import {isZipSource,zipPageData,zipPageRange} from './core/quranSources';
-import {images as tawjeedImages} from './data/quran-tests/tawjeed_test_2-images';
-import {images as medineImages} from './data/quran-tests/medine_test-images';
+import {quranLineUri} from './services/quranDownload';
+import madaniMarkers from './data/quran-tests/coran_1441-markers.json';
+
 import React,{useEffect,useRef} from 'react';
 import {Icon} from './ui/Premium';
 import {GestureResponderEvent,Image,Pressable,Text,View} from 'react-native';
@@ -13,11 +14,11 @@ import tajweedDimensionsRaw from './data/mushaf-tajweed-dimensions.json';
 import {frenchVerse,tajweedColor,tajweedSpans,verseAtImagePoint} from './core/readerData';
 import {pageRange,Range,surahs,verseAt,verseId} from './core/quran';
 
-type Props={studyBanner?:React.ReactNode;textScale?:number;mapImagePoint?:(event:GestureResponderEvent,callback:(x:number,y:number)=>void)=>void;allowTap?:()=>boolean;page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages'|'tawjeed_test_2'|'medine_test';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;bookmarkIds?:number[];onVersePress?:(id:number)=>void;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
+type Props={studyBanner?:React.ReactNode;textScale?:number;mapImagePoint?:(event:GestureResponderEvent,callback:(x:number,y:number)=>void)=>void;allowTap?:()=>boolean;page:number;width:number;height:number;mode:'traditional'|'tajweed'|'tajweedPages'|'coran_1441';language:'ar'|'fr';playingVerseId:number|null;difficultyIds?:number[];sessionRange:Range;showSession:boolean;bookmarkIds?:number[];onVersePress?:(id:number)=>void;onVerseLongPress:(id:number)=>void;onBlankLongPress:()=>void;onTap:()=>void};
 const bounds=boundsRaw as Record<string,number[][]>;
 
 export function MushafPage({studyBanner,textScale=1,mapImagePoint,allowTap=()=>true,page,width,height,mode,language,playingVerseId,difficultyIds=[],bookmarkIds=[],onVersePress,sessionRange,showSession,onVerseLongPress,onBlankLongPress,onTap}:Props){
-  useEffect(()=>{if(!isZipSource(mode))return;const images=mode==='tawjeed_test_2'?tawjeedImages:medineImages;for(const neighbor of [page-1,page+1]){const asset=images[neighbor];if(asset){const uri=Image.resolveAssetSource?.(asset)?.uri;if(uri)Image.prefetch(uri).catch(()=>{});}}},[mode,page]);
+  useEffect(()=>{if(!isZipSource(mode))return;for(const neighbor of [page-1,page+1])if(neighbor>=1&&neighbor<=604)for(let line=0;line<15;line++)Image.prefetch(quranLineUri(neighbor,line)).catch(()=>{});},[mode,page]);
   const pageView=useRef<View>(null),pendingTap=useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>()=>{if(pendingTap.current)clearTimeout(pendingTap.current);},[page]);
   const selectAfterTap=(work:()=>void)=>{if(pendingTap.current)clearTimeout(pendingTap.current);pendingTap.current=setTimeout(()=>{pendingTap.current=null;if(allowTap())work();},300);};
@@ -41,7 +42,10 @@ export function MushafPage({studyBanner,textScale=1,mapImagePoint,allowTap=()=>t
   const hitVerse=(event:GestureResponderEvent,callback:(id:number|null)=>void)=>{if(mapImagePoint){mapImagePoint(event,(x,y)=>callback(verseAtImagePoint(rows,x-padding,y-padding,width-padding*2,height-padding*2,sourceWidth,sourceHeight)));return;}const {pageX,pageY}=event.nativeEvent;pageView.current?.measureInWindow((left,top)=>callback(verseAtImagePoint(rows,pageX-left-padding,pageY-top-padding,width-padding*2,height-padding*2,sourceWidth,sourceHeight)));};
   return <Pressable ref={pageView} onPress={event=>{if(!allowTap())return;if(onVersePress)hitVerse(event,id=>{if(id!==null)selectAfterTap(()=>onVersePress(id));});else onTap();}} onLongPress={event=>hitVerse(event,id=>{if(id===null)onBlankLongPress();else onVerseLongPress(id);})} delayLongPress={450} style={{width,height,backgroundColor:'white',borderWidth:zipped?0:2,borderColor:colors.beige,borderRadius:zipped?0:9,overflow:'hidden',shadowColor:'#000',shadowOpacity:0.12,shadowRadius:10}}>
     {studyBanner&&!zipped&&<View style={{position:'absolute',top:height*.014,left:width*.2,width:width*.6,zIndex:3}}>{studyBanner}</View>}
-    <Image accessibilityLabel={`Mushaf · page ${page}`} source={mode==='tawjeed_test_2'?tawjeedImages[page]:mode==='medine_test'?medineImages[page]:colorPage?mushafTajweedImages[page]:mushafImages[page]} style={{width:width-padding*2,height:height-padding*2}} resizeMode="contain" />
+    {mode==='coran_1441'?<View accessibilityLabel={`Mushaf · page ${page}`} pointerEvents="none" style={{width,height}}>
+      {Array.from({length:15},(_,line)=>({uri:quranLineUri(page,line)})).map((asset,line)=><Image key={line} source={asset} style={{position:'absolute',left:0,top:(height-width*232/1440)/14*line,width,height:width*232/1440}} resizeMode="contain" />)}
+      {((madaniMarkers as Record<string,number[][]>)[page]??[]).map(([surah,ayah,line,x,y])=>{const diameter=width*.05;return <View key={`${surah}:${ayah}`} style={{position:'absolute',left:x*width-diameter/2,top:(height-width*232/1440)/14*line+y*width*232/1440-diameter/2,width:diameter,height:diameter,borderRadius:diameter/2,borderWidth:width*.003,borderColor:'#047857',backgroundColor:'#ECFDF5',alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:width*.025,color:'#047857',lineHeight:diameter*.8,includeFontPadding:false}}>{String(ayah).replace(/\d/g,n=>'٠١٢٣٤٥٦٧٨٩'[Number(n)])}</Text></View>;})}
+    </View>:<Image accessibilityLabel={`Mushaf · page ${page}`} source={colorPage?mushafTajweedImages[page]:mushafImages[page]} style={{width:width-padding*2,height:height-padding*2}} resizeMode="contain" />}
     {rows.filter(row=>{const id=verseId(row[0],row[1]);return id!==null&&(verseSelected(id)||difficultyIds.includes(id)||bookmarkIds.includes(id));}).map((row,index)=>{const id=verseId(row[0],row[1])!,active=id===playingVerseId,difficult=difficultyIds.includes(id);return <View key={index} pointerEvents="none" style={{position:'absolute',left:padding+row[3]/sourceWidth*(width-padding*2),top:padding+row[5]/sourceHeight*(height-padding*2),width:(row[4]-row[3])/sourceWidth*(width-padding*2),height:(row[6]-row[5])/sourceHeight*(height-padding*2),backgroundColor:difficult?'#E85B5B':bookmarkIds.includes(id)?colors.green2:active?colors.selected:colors.gold,opacity:bookmarkIds.includes(id)?0.18:difficult?0.18:active?0.42:0.11,borderWidth:0,borderColor:colors.green,borderRadius:4}} />;})}
     {bookmarkIds.map(id=>{const row=rows.find(r=>verseId(r[0],r[1])===id);return row?<View key={`bookmark-${id}`} pointerEvents="none" accessibilityLabel={`Marque-page verset ${verseAt(id).ayah}`} style={{position:'absolute',right:padding,top:padding+row[5]/sourceHeight*(height-padding*2)}}><Icon name="bookmark" size={14} color={colors.green}/></View>:null;})}
   </Pressable>;
