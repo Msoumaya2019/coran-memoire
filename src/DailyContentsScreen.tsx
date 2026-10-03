@@ -1,7 +1,11 @@
+import {AppTheme} from './core/program';
+import {Heading,readingArt,SectionHeader} from './ui/DesignSystem';
+import {arabicFont} from './theme/fonts';
+import {Icon,themeArt} from './ui/Premium';
 import {resolveContentMedia} from './services/dailyContentMedia';
 import {createManagedAudioPlayer as createAudioPlayer} from './services/audioFocus';
 import React,{useEffect,useRef,useState} from 'react';
-import {AppState as DeviceState,FlatList,Image,ImageBackground,Pressable,ScrollView,Share,View} from 'react-native';
+import {AppState as DeviceState,FlatList,Image,ImageBackground,Modal,Pressable,ScrollView,Share,View} from 'react-native';
 
 import {Button,Card,colors,Label,Title} from './ui/theme';
 import * as service from './services/dailyContents';
@@ -22,9 +26,9 @@ export function ContentCard({item,userId,preview=false}:{item:service.DailyConte
  useEffect(()=>{const timer=setInterval(()=>{if(player.current)setPlaying(player.current.playing);},250);return()=>clearInterval(timer);},[]);
  return <Card style={{padding:18,borderRadius:26}}>
   {(!!item.title||!!item.image_url&&!imageError)&&<View style={{flexDirection:'row',alignItems:'center',gap:12,marginBottom:8}}><Label style={{flex:1,fontWeight:'700'}}>{item.title??(item.type==='invocation'?'Invocation':'Rappel')}</Label>{!!imageUrl&&!imageError&&<Image source={{uri:imageUrl!}} onError={()=>setImageError(true)} accessible={false} resizeMode="contain" style={{width:40,height:40,borderRadius:10,marginLeft:'auto'}} />}</View>}
-  {!!item.arabic_text&&<Label style={{fontSize:30,lineHeight:54,textAlign:'center',writingDirection:'rtl',color:colors.green,marginVertical:6}}>{item.arabic_text}</Label>}
+  {!!item.arabic_text&&<Label style={{fontFamily:arabicFont(),fontSize:24,lineHeight:42,textAlign:'center',writingDirection:'rtl',color:colors.green,marginVertical:6}}>{item.arabic_text}</Label>}
   {!!item.phonetic_text&&<Label style={{fontStyle:'italic',textAlign:'center',color:colors.muted,marginBottom:12}}>{item.phonetic_text}</Label>}
-  <Label style={{fontSize:18,lineHeight:28,textAlign:'center',marginVertical:8}}>{item.french_text}</Label>
+  <Label style={{fontSize:14,lineHeight:23,textAlign:'center',marginVertical:8}}>{item.french_text}</Label>
   {!!item.explanation&&<Label style={{color:colors.muted,lineHeight:24,marginBottom:8}}>{item.explanation}</Label>}
   {!!item.audio_url&&<Button small onPress={audio}>{playing?'Ⅱ Pause':'▶ Écouter'}</Button>}
   {item.type==='invocation'&&!preview&&<Button small secondary onPress={()=>{activeAudio?.pause();setPlaying(false);setRecord(!record);}}>Enregistrer ma voix</Button>}
@@ -35,14 +39,16 @@ export function ContentCard({item,userId,preview=false}:{item:service.DailyConte
  </Card>;
 }
 export function ContentTabs({type,onChange}:{type:service.ContentType;onChange:(type:service.ContentType)=>void}){return <View style={{flexDirection:'row',gap:8,marginVertical:12}}>{(['reminder','invocation'] as const).map(t=><View key={t} style={{flex:1}}><Button small secondary={type!==t} onPress={()=>onChange(t)}>{t==='reminder'?'☀ Rappel':'☾ Invocation'}</Button></View>)}</View>;}
-export function TodayContents({userId,theme='lilac'}:{userId?:string;theme?:'classic'|'feminine'|'lilac'|'night'}){
- const [items,setItems]=useState<service.DailyContent[]>([]),[type,setType]=useState<service.ContentType>('invocation'),[loading,setLoading]=useState(true),[error,setError]=useState('');
+function DailyPreview({item,onPress,width}:{item:service.DailyContent;onPress:()=>void;width:number}){
+ const [uri,setUri]=useState<string|null>(null),[failed,setFailed]=useState(false);
+ useEffect(()=>{let live=true;setFailed(false);resolveContentMedia(item.image_url).then(value=>{if(live)setUri(value);}).catch(()=>{});return()=>{live=false;};},[item.image_url]);
+ return <Pressable accessibilityRole="button" accessibilityLabel={`Ouvrir ${item.type==='reminder'?'le rappel':'l’invocation'} du jour`} onPress={onPress} style={{width,padding:1}}><Card style={{flexDirection:'row',padding:9,gap:12,marginBottom:0,minHeight:116}}><Image source={uri&&!failed?{uri}:readingArt} onError={()=>setFailed(true)} style={{width:88,height:98,borderRadius:12}}/><View style={{flex:1,justifyContent:'center'}}><Heading size={17}>{item.type==='reminder'?'Rappel du jour':'Invocation du jour'}</Heading>{!!item.arabic_text&&<Label numberOfLines={1} style={{fontFamily:arabicFont(),fontSize:22,lineHeight:36,writingDirection:'rtl',textAlign:'right',marginTop:3}}>{item.arabic_text}</Label>}{!!item.phonetic_text&&<Label numberOfLines={1} style={{fontSize:10,color:colors.muted}}>{item.phonetic_text}</Label>}<Label numberOfLines={2} style={{fontSize:12,lineHeight:18,marginTop:3}}>{item.french_text}</Label><Label numberOfLines={1} style={{fontSize:10,color:colors.muted,marginTop:5}}>{[item.source,item.reference].filter(Boolean).join(' · ')}</Label></View><View style={{justifyContent:'center'}}><Icon name="chevron-right" size={18} color={colors.green}/></View></Card></Pressable>;
+}
+export function TodayContents({userId,theme='white',onOpen}:{userId?:string;theme?:AppTheme;onOpen?:(id:string)=>void}){
+ const [items,setItems]=useState<service.DailyContent[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(''),[width,setWidth]=useState(360),[index,setIndex]=useState(0),[detail,setDetail]=useState<service.DailyContent|null>(null);
  useEffect(()=>{let alive=true;const load=()=>service.dayContents().then(rows=>{if(alive){setItems(rows);setError('');}}).catch(e=>{if(alive)setError(String(e));}).finally(()=>{if(alive)setLoading(false);});service.cachedDayContents().then(rows=>{if(alive&&rows.length)setItems(rows);});void load();const remove=service.observeContents(()=>void load());const app=DeviceState.addEventListener('change',state=>{if(state==='active')void load();});let lastDate=service.localDate();const timer=setInterval(()=>{const date=service.localDate();if(date!==lastDate){lastDate=date;void load();}},60000);return()=>{alive=false;remove();app.remove();clearInterval(timer);};},[]);
- const item=items.find(row=>row.type===type);
- const artwork={classic:require('../assets/themes/emerald.png'),feminine:require('../assets/themes/rose.png'),lilac:require('../assets/themes/lilac.png'),night:require('../assets/themes/night.png')};
- return <Card style={{backgroundColor:colors.soft,padding:12,borderRadius:28,overflow:'hidden'}}><ImageBackground source={artwork[theme]} imageStyle={{opacity:0.13}} style={{padding:6,borderRadius:18,overflow:'hidden'}}><Label style={{fontWeight:'800',fontSize:25}}>Aujourd’hui</Label><Label style={{color:colors.green2,marginTop:4}}>Un rappel pour illuminer ta journée</Label></ImageBackground><ContentTabs type={type} onChange={setType} />
- {item?<ContentCard key={item.id} item={item} userId={userId} />:loading?<View accessibilityLabel="Chargement du contenu du jour" style={{height:110,backgroundColor:colors.paper,borderRadius:20,padding:20}}><View style={{height:14,width:'75%',backgroundColor:colors.line,borderRadius:7}} /><View style={{height:14,width:'90%',backgroundColor:colors.line,borderRadius:7,marginTop:20}} /></View>:<Label>{error?'Le contenu du jour est temporairement indisponible.':type==='reminder'?'Aucun rappel disponible aujourd’hui.':'Aucune invocation disponible aujourd’hui.'}</Label>}
- </Card>;
+ const entries=(['reminder','invocation'] as const).flatMap(type=>{const item=items.find(row=>row.type===type);return item?[item]:[];});
+ return <View onLayout={event=>setWidth(event.nativeEvent.layout.width)} style={{marginBottom:4}}><SectionHeader title={entries[index]?.type==='invocation'?'Invocation du jour':'Rappel du jour'}/>{entries.length?<FlatList horizontal pagingEnabled showsHorizontalScrollIndicator={false} data={entries} keyExtractor={item=>item.id} extraData={width} onMomentumScrollEnd={event=>setIndex(Math.round(event.nativeEvent.contentOffset.x/width))} renderItem={({item})=><DailyPreview item={item} width={width} onPress={()=>onOpen?onOpen(item.id):setDetail(item)}/>}/>:<Card><Label style={{fontSize:12,color:colors.muted}}>{loading?'Chargement du contenu du jour…':error?'Contenu du jour indisponible hors connexion.':'Aucun contenu disponible aujourd’hui.'}</Label></Card>}{entries.length>1&&<View style={{flexDirection:'row',justifyContent:'center',gap:7,paddingVertical:9}}>{entries.map((item,i)=><View key={item.id} style={{width:6,height:6,borderRadius:3,backgroundColor:i===index?colors.green:colors.line}}/>)}</View>}<Modal visible={!!detail} transparent animationType="slide" onRequestClose={()=>setDetail(null)}><View style={{flex:1,backgroundColor:'#0005',justifyContent:'flex-end'}}><ScrollView style={{maxHeight:'85%',backgroundColor:colors.paper,borderTopLeftRadius:30,borderTopRightRadius:30}} contentContainerStyle={{padding:18}}><Button secondary onPress={()=>setDetail(null)}>Fermer</Button>{detail&&<ContentCard item={detail} userId={userId}/>}</ScrollView></View></Modal></View>;
 }
 export function DailyContentsScreen({onClose,userId,initialId}:{onClose:()=>void;userId?:string;initialId?:string}){
  const [type,setType]=useState<service.ContentType>('invocation'),[cats,setCats]=useState<service.ContentCategory[]>([]),[selected,setSelected]=useState<string>(),[items,setItems]=useState<service.DailyContent[]>([]),[fav,setFav]=useState(false),[ids,setIds]=useState<string[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[more,setMore]=useState(true);

@@ -11,6 +11,8 @@
     "test": "node node_modules/typescript/bin/tsc src/core/offlineMerge.ts src/core/offlineAccess.ts src/core/weeklyProgress.ts src/core/offlineQueue.ts src/core/quranSources.ts src/core/quran.ts src/core/program.ts src/core/review.ts src/core/pageNavigation.ts src/core/readerLayout.ts src/core/studyProgress.ts src/core/readerZoom.ts src/core/readerAppearance.ts src/core/audio.ts src/core/readerData.ts src/core/ayahMarker.ts src/core/bookmarks.ts src/coranTest/model.ts src/coranTest/html.ts --ignoreConfig --module commonjs --target es2022 --moduleResolution node --resolveJsonModule --esModuleInterop --outDir tests/build --ignoreDeprecations 6.0 --skipLibCheck && node --test tests/*.test.cjs"
   },
   "dependencies": {
+    "@expo-google-fonts/amiri": "^0.4.1",
+    "@expo-google-fonts/cormorant-garamond": "^0.4.1",
     "@expo/vector-icons": "15.0.2",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/netinfo": "12.0.1",
@@ -22,6 +24,7 @@
     "expo-constants": "~57.0.19",
     "expo-document-picker": "~57.0.2",
     "expo-file-system": "~57.0.7",
+    "expo-font": "^57.0.4",
     "expo-image-picker": "~57.0.20",
     "expo-notifications": "~57.0.20",
     "expo-secure-store": "~57.0.4",

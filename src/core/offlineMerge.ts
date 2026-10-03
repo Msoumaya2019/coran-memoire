@@ -13,6 +13,7 @@ function merge(base:any,local:any,remote:any,path=''):any{
    return [...new Set([...Object.keys(l),...Object.keys(r)])].flatMap(id=>{const value=l[id]===undefined&&r[id]?.status==='done'?r[id]:merge(b[id],l[id],r[id],path+'.'+id);return value===undefined?[]:[value];});
   }
   if(path.endsWith('validations')||path.endsWith('History'))return [...new Map([...remote,...local].map(value=>[JSON.stringify(value),value])).values()];
+  if(path.endsWith('readPages'))return [...new Set([...local,...remote])].sort((a,b)=>a-b);
   if(path.endsWith('completed')&&[...local,...remote].every(v=>typeof v==='number'))return [...new Set([...local,...remote])].sort((a,b)=>a-b);
   return local;
  }

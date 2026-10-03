@@ -1,21 +1,27 @@
-# Vérification visuelle — séances partielles
+# Vérification visuelle — thème blanc et repères en marge
 
-## Références et périmètre
+## Références
 
-Maquettes fournies télécharger.png, télécharger (1).png et télécharger (2).png ; comparaison directe avec les captures locales learning-banner.png, learning-sheet.png et programme-learning.png. Le thème et la typographie existants sont réutilisés. La maquette contient des bornes illustratives ; l’aperçu utilise le vrai intervalle Al Qasas 85 à Al Ankabût 5 (9 versets, page QPC 396).
+Maquettes du 3 octobre 2026 à 12:01–12:04 : Accueil, Coran, Juz, Programme, Lecture, Progrès, Amis, Objectif, Apparence. Maquette 12:05:02 : repères dans la marge gauche. Les valeurs illustratives des maquettes sont remplacées par les données réelles ; le total canonique est 6 236 versets.
 
-## Résultat du contrôle local
+## Vérifications réalisées
 
-- Bandeau centré dans la ligne Juz / nom arabe du Mushaf original, sans déplacer le corps ni changer son ratio. Barre basse commune conservée.
-- Fiche arrondie, poignée, fermeture, choix complet/partiel, Page/Verset, champs interactifs et résumé explicite. Les champs des deux sourates contiennent uniquement les valeurs autorisées.
-- Programme : carte de reprise avant les autres actions, confirmation verte, détail des éléments et ouverture au premier restant.
-- Annuler ferme sans changer le compteur. En Révision, une page validée sur deux produit 50 %, page 405 à reprendre.
-- Petit écran 320×568 : titre se replie, listes et contenu défilent ; Valider et Annuler sont accessibles. Aucun débordement horizontal observé. Vue large 440×956, captures du contenu disponible hors zone système.
+- Aperçu des composants de production dans React Native Web, avec services externes simulés uniquement dans le script de QA.
+- Vues 440 × 880 et 375 × 744 de contenu utile. Captures dans `docs/qa/` : accueil, programme, progrès, amis/recherche, apparence, objectif, sourates, Juz, Hizb, validation partielle et lecture.
+- Comparaison aux références : fond presque blanc, cartes blanches, titres serif compacts, accent prune, décor de mosquée discret, illustration de lecture, médaillons dorés, cinq onglets exacts. Les anciennes fonctions sociales restent accessibles.
+- Accent vert sélectionné : boutons, titres et sélection deviennent verts ; fonds et cartes restent clairs. Le thème rose et les thèmes historiques restent proposés.
+- Recherche Amis : saisir Kamel conserve uniquement la carte correspondante. Sélecteurs Juz et Hizb affichent immédiatement les divisions et leurs vrais intervalles de pages.
+- Objectif : menus fonctionnels, sélection de verset mise à jour, objectif existant conservé tant qu’il n’est pas modifié. Aucun verset n’est déclaré connu par une simple ouverture du formulaire.
+- Apprentissage partiel Al Qasas 85 → Al Ankabût 5 : menus limités aux deux sourates, puis uniquement 85–88 pour Al Qasas. Validation jusqu’à 87 : 3/9 appris, 6 restants, reprise au verset 88 ; coches et repères remplis pour 85–87.
+- Mushaf QPC page 402 : les 128 rectangles de mots sont rigoureusement identiques avant/après affichage des annotations. Preuve : `docs/qa/mushaf-geometry.json`. Aucun calque de programme derrière le texte.
+- Pages images : même image, mêmes dimensions, mêmes positions ; annotations sur un calque indépendant dans la marge. Les versets partageant une ligne ont un repère groupé (ex. 1·2), afin d’éviter des pastilles superposées.
 
-## Écarts assumés
+## Choix et limites
 
-Conservation du héros et de la navigation du Programme existants. Les cartes et boutons utilisent les composants actuels plutôt que les illustrations de maquette. Le bandeau HTML utilise un pictogramme de livre natif du navigateur ; son dessin peut varier selon le système.
+Le bandeau est intégré à l’en-tête Juz/sourate du lecteur QPC. Certaines sources images n’ont aucun espace d’en-tête disponible : leur capsule utilise l’espace sous la page, afin de ne pas masquer la première ligne. La taille du Mushaf n’a pas été diminuée pour créer un nouvel en-tête.
 
-## Limites
+Les photos personnelles des amis et les images des contenus administrateur restent leurs données réelles, avec cache/placeholder existants. Aucun nombre fictif de versets d’amis n’est ajouté : le contrat de la liste sociale ne fournit pas cette statistique.
 
-Validation locale web réussie pour la structure et les interactions. La capture de la fiche sur la grande vue est limitée à la partie visible du navigateur ; les boutons finaux ont été contrôlés par défilement sur petit écran. Les safe areas natives, Dynamic Island, voix, audio, zoom et redémarrage doivent encore être testés sur iPhone et Android physiques. Aucun test physique n’a été exécuté ici. Aucun blocage fonctionnel observé dans l’aperçu.
+Les illustrations créées reprennent les motifs et la palette des maquettes ; elles ne sont pas des extractions pixel à pixel de celles-ci. Les pages du Coran restent les ressources originales.
+
+Les safe areas natives, Dynamic Island, zoom et orientation paysage, audio réel, microphone, notifications et persistance après arrêt forcé restent à contrôler sur appareils physiques. Aucun test physique iPhone n’a été effectué dans cette session.
