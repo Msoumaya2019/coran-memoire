@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Animated,GestureResponderEvent,PanResponder,View} from 'react-native';
 import {constrainReaderZoom,zoomReaderAt,ReaderZoom} from '../core/readerZoom';
 type ZoomTools={zoomed:boolean;textScale:number;mapPoint:(event:GestureResponderEvent,callback:(x:number,y:number)=>void)=>void;allowTap:()=>boolean};
-export function ZoomableReader({width,height,reflow=false,children}:{width:number;height:number;reflow?:boolean;children:(tools:ZoomTools)=>React.ReactNode}){
+export function ZoomableReader({width,height,reflow=false,centerContent=false,children}:{width:number;height:number;reflow?:boolean;centerContent?:boolean;children:(tools:ZoomTools)=>React.ReactNode}){
  const view=useRef<View>(null),transform=useRef<ReaderZoom>({scale:1,x:0,y:0});
  const dimensions=useRef({width,height});dimensions.current={width,height};
  const [textScale,setTextScale]=useState(1);
@@ -34,5 +34,5 @@ export function ZoomableReader({width,height,reflow=false,children}:{width:numbe
   onPanResponderTerminate:()=>{gesture.current=null;suppressUntil.current=Date.now()+300;},
   onPanResponderTerminationRequest:()=>false,
  }),[]);
- return <View ref={view} {...responder.panHandlers} onTouchStart={event=>{startTouch.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY,time:Date.now()};}} onTouchEnd={event=>{const p=startTouch.current;if(!gesture.current&&Date.now()>suppressUntil.current&&Date.now()-p.time<280&&Math.hypot(event.nativeEvent.pageX-p.x,event.nativeEvent.pageY-p.y)<10)lastTap.current=Date.now();}} style={{width,height,overflow:'hidden'}} accessibilityHint="Pince avec deux doigts pour agrandir. Double touche pour zoomer ou revenir à la page entière."><Animated.View style={{width,height,alignItems:'center',transformOrigin:'top left',transform:[{translateX:x},{translateY:y},{scale}]}}>{children(tools)}</Animated.View></View>;
+ return <View ref={view} {...responder.panHandlers} onTouchStart={event=>{startTouch.current={x:event.nativeEvent.pageX,y:event.nativeEvent.pageY,time:Date.now()};}} onTouchEnd={event=>{const p=startTouch.current;if(!gesture.current&&Date.now()>suppressUntil.current&&Date.now()-p.time<280&&Math.hypot(event.nativeEvent.pageX-p.x,event.nativeEvent.pageY-p.y)<10)lastTap.current=Date.now();}} style={{width,height,overflow:'hidden'}} accessibilityHint="Pince avec deux doigts pour agrandir. Double touche pour zoomer ou revenir à la page entière."><Animated.View style={{width,height,alignItems:'center',justifyContent:centerContent?'center':'flex-start',transformOrigin:'top left',transform:[{translateX:x},{translateY:y},{scale}]}}>{children(tools)}</Animated.View></View>;
 }

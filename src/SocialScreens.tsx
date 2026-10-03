@@ -1,3 +1,4 @@
+import {AdminQuiz} from './ui/AdminQuiz';
 import {Heading,IconButton,SegmentedControl} from './ui/DesignSystem';
 import {IslamicHero,Icon,premiumShadow} from './ui/Premium';
 import * as Clipboard from 'expo-clipboard';
@@ -31,7 +32,7 @@ const errorText=(e:unknown)=>{
 };
 const heading=(title:string)=><Label style={{fontSize:18,fontWeight:'700',color:colors.green,marginTop:18,marginBottom:8}}>{title}</Label>;
 
-export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,shareText,userId}:{onClose:()=>void;onUnreadChange?:()=>void;initialLinkId?:string|null;initialCode?:string|null;shareText:string;userId:string|null}){
+export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,shareText,userId,onChallenge}:{onChallenge?:(friendId:string)=>void;onClose:()=>void;onUnreadChange?:()=>void;initialLinkId?:string|null;initialCode?:string|null;shareText:string;userId:string|null}){
   const [allFriends,setAllFriends]=useState(false),[friendQuery,setFriendQuery]=useState(''),[friendFilter,setFriendFilter]=useState<'Tous'|'En ligne'|'Demandes'>('Tous'),[inviteOpen,setInviteOpen]=useState(false);
   const cached=social.cachedFriendsSnapshot(userId),cachedInbox=social.cachedFriendInbox(userId);
   const [profile,setProfile]=useState<social.FriendProfile|null>(cached?.profile??null);
@@ -165,6 +166,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
       </View>
     </>:<>
       {!selected.adminContact&&<Button small secondary onPress={()=>setShowFriendTools(!showFriendTools)}>{showFriendTools?'Masquer les options':'Profil et entraide'}</Button>}
+      {!selected.adminContact&&selected.kind==='link'&&onChallenge&&<Button small secondary onPress={()=>{const friend=links.find(l=>l.id===selected.id)?.other?.id;if(friend)onChallenge(friend);}}>🏆 Défier</Button>}
       {!selected.adminContact&&showFriendTools&&<>
       {overview&&<Card><Label style={{fontWeight:'700'}}>{overview.display_name} · {overview.is_online?'En ligne':'Hors ligne'}</Label>{overview.goal_label?<><Label>{overview.goal_label} · objectif atteint : {overview.goal_percent} %</Label><Label>Cette semaine : {overview.weekly_verses} versets · {overview.weekly_sessions} séances</Label></>:<Label style={{color:colors.muted}}>Progression privée</Label>}{overview.current_start&&overview.current_end?<Label>Passage actuel : {reference({start:overview.current_start,end:overview.current_end})}</Label>:null}</Card>}
       {selected.kind==='link'&&<>
@@ -208,6 +210,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
 
 export function AdminScreen({onClose}:{onClose:()=>void}){
   const [dailyMode,setDailyMode]=useState(false);
+  const [quizMode,setQuizMode]=useState(false);
   const [accountsMode,setAccountsMode]=useState(false);
   const [recitationMode,setRecitationMode]=useState(false);
   const [notificationMode,setNotificationMode]=useState(false);
@@ -230,13 +233,14 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     const until=duration==='forever'?null:new Date(Date.now()+Number(duration)*86400000).toISOString();
     await act(()=>social.suspendMember(target,reason.trim(),until));setTarget('');setReason('');
   };
+  if(quizMode)return <AdminQuiz onClose={()=>setQuizMode(false)}/>;
   if(dailyMode)return <AdminDailyContents onClose={()=>setDailyMode(false)} />;
   if(accountsMode)return <AdminAccounts onClose={()=>setAccountsMode(false)} />;
   if(recitationMode)return <AdminRecitations onClose={()=>setRecitationMode(false)} />;
   if(notificationMode)return <AdminNotifications onClose={()=>setNotificationMode(false)} />;
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
-    <Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
+    <Button onPress={()=>setQuizMode(true)}>Quiz</Button><Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
     <Button onPress={()=>setAccountsMode(true)}>Comptes et progression</Button>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
     <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>

@@ -12,7 +12,7 @@ const palettes={
   lilac:{green:'#5F548E',green2:'#897AB5',cream:'#FBF9FF',paper:'#FFFCFF',beige:'#ECE4F5',gold:'#B89D65',text:'#2D2943',muted:'#716B86',line:'#E3DCF0',red:'#A45C67',soft:'#F0EBF8',softBorder:'#CFC5E3',selected:'#ECE6F6',onDark:'#EDE7FB',onDarkSoft:'#E0D8F2',track:'#9689BB',progress:'#D4C4EB',surahBadge:'#EEE8F8'},
   night:{green:'#132B47',green2:'#315273',cream:'#F7F7F4',paper:'#FFFDF8',beige:'#E9E6DF',gold:'#B58942',text:'#1C2A3B',muted:'#68727D',line:'#DFE3E5',red:'#A85F57',soft:'#E9EEF1',softBorder:'#C4D2DB',selected:'#E8EFF4',onDark:'#D5E1E9',onDarkSoft:'#CBD7E1',track:'#5C7390',progress:'#D8AF68',surahBadge:'#E8EDF1'}
 };
-export const colors={...palettes.white,review:'#246B48',reviewSoft:'#EBF5EF',surfaceSecondary:'#F8F6F4',mutedLight:'#A49DA9'};
+export const colors={...palettes.white,quizLavender:'#F0EEFF',quizPurple:'#6563A7',review:'#246B48',reviewSoft:'#EBF5EF',surfaceSecondary:'#F8F6F4',mutedLight:'#A49DA9'};
 let activeTheme:AppTheme='white',activeAccent:AccentName='prune';
 export function applyTheme(theme:AppTheme,accent?:AccentName,uiFont?:UiFont){applyUiFont(uiFont);if(!(theme in palettes))theme='white';if(accent&&!(accent in accents))accent=undefined;activeTheme=theme;activeAccent=accent??(theme==='classic'?'green':theme==='feminine'?'rose':'prune');Object.assign(colors,palettes[theme]??palettes.white);if(accent||theme==='white'){const a=accents[activeAccent];Object.assign(colors,{green:a.primary,green2:a.primary,selected:a.soft,surahBadge:a.soft,progress:a.soft});}colors.surfaceSecondary=theme==='white'?'#F8F6F4':colors.soft;}
 export function useTheme(){return {colors,spacing,radius,typography,shadows,accent:activeAccent,themeName:activeTheme};}

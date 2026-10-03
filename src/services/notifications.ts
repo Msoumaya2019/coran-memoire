@@ -157,6 +157,7 @@ export async function scheduledReminderCounts(){
 }
 
 export function notificationDestination(data:Record<string,unknown>|undefined){
+  if(data?.kind==='quiz-daily'||data?.kind==='quiz-challenge'||data?.kind==='quiz-result')return {kind:'quiz' as const,challengeId:typeof data.challengeId==='string'?data.challengeId:undefined};
   if(data?.kind===adminKind)return {kind:'program' as const};
   if(data?.kind===reminderKind)return {kind:'program' as const};
   if(data?.kind===revisionKind)return {kind:'reviews' as const};
