@@ -1,3 +1,4 @@
+import {observeProblemReportSync} from './services/problemReports';
 import {QuizScreen} from './ui/QuizScreen';
 import {observeQuizSync} from './services/quiz';
 import {QuranSourceTransition} from './core/quranSourceTransition';
@@ -98,6 +99,7 @@ function AppContent(){
   const [admin,setAdmin]=useState(false);
   const [quizOpen,setQuizOpen]=useState<{friend?:string;challenge?:string}|null>(null);
   useEffect(()=>observeQuizSync(),[state.userId]);
+  useEffect(()=>observeProblemReportSync(),[state.userId]);
   const [passwordRecovery,setPasswordRecovery]=useState(false);
   const [pendingLinkId,setPendingLinkId]=useState<string|null>(null);
   const [pendingInviteCode,setPendingInviteCode]=useState<string|null>(null);

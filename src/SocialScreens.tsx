@@ -1,3 +1,4 @@
+import {AdminProblemReports} from './ui/AdminProblemReports';
 import {AdminQuiz} from './ui/AdminQuiz';
 import {Heading,IconButton,SegmentedControl} from './ui/DesignSystem';
 import {IslamicHero,Icon,premiumShadow} from './ui/Premium';
@@ -211,6 +212,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
 export function AdminScreen({onClose}:{onClose:()=>void}){
   const [dailyMode,setDailyMode]=useState(false);
   const [quizMode,setQuizMode]=useState(false);
+  const [problemMode,setProblemMode]=useState(false);
   const [accountsMode,setAccountsMode]=useState(false);
   const [recitationMode,setRecitationMode]=useState(false);
   const [notificationMode,setNotificationMode]=useState(false);
@@ -233,6 +235,7 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     const until=duration==='forever'?null:new Date(Date.now()+Number(duration)*86400000).toISOString();
     await act(()=>social.suspendMember(target,reason.trim(),until));setTarget('');setReason('');
   };
+  if(problemMode)return <AdminProblemReports onClose={()=>setProblemMode(false)}/>;
   if(quizMode)return <AdminQuiz onClose={()=>setQuizMode(false)}/>;
   if(dailyMode)return <AdminDailyContents onClose={()=>setDailyMode(false)} />;
   if(accountsMode)return <AdminAccounts onClose={()=>setAccountsMode(false)} />;
@@ -240,7 +243,7 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
   if(notificationMode)return <AdminNotifications onClose={()=>setNotificationMode(false)} />;
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
-    <Button onPress={()=>setQuizMode(true)}>Quiz</Button><Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
+    <Button onPress={()=>setProblemMode(true)}>Problèmes de l’application</Button><Button onPress={()=>setQuizMode(true)}>Quiz</Button><Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
     <Button onPress={()=>setAccountsMode(true)}>Comptes et progression</Button>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
     <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>

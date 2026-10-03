@@ -136,41 +136,63 @@ grant execute on function public.quiz_admin_sets(),public.quiz_admin_save_set(js
 
 commit;
 
-const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
-const {PGlite}=require('@electric-sql/pglite');
-test('Quiz PostgreSQL: rights, one daily answer, frozen shared questions, hidden corrections, scores and expiry',async()=>{
- const db=new PGlite();const a='00000000-0000-0000-0000-000000000001',b='00000000-0000-0000-0000-000000000002',outsider='00000000-0000-0000-0000-000000000003';
- try{
- await db.exec(`create role anon;create role authenticated;create schema auth;create schema private;create table auth.users(id uuid primary key);create function auth.uid() returns uuid language sql as $$select nullif(current_setting('test.uid',true),'')::uuid$$;create function private.is_app_admin() returns boolean language sql as $$select current_setting('test.admin',true)='true'$$;create table notification_preferences(user_id uuid primary key,messages_enabled boolean default true);create table public.friend_profiles(id uuid primary key,display_name text,avatar_path text);create table public.friend_links(requester_id uuid,recipient_id uuid,status text);insert into auth.users values('${a}'),('${b}'),('${outsider}');insert into friend_profiles values('${a}','Mohamed',null),('${b}','Yassine',null);insert into friend_links values('${a}','${b}','accepted');`);
- const migration=fs.readFileSync('supabase/quiz.sql','utf8');await db.exec(migration);await db.exec(migration);
- await db.exec(`create table push_devices(user_id uuid,expo_push_token text);create table push_log(body jsonb);create function private.send_expo_push(url text,body jsonb,headers jsonb,timeout_milliseconds integer default 5000) returns bigint language plpgsql as $$begin insert into public.push_log values(body);return 1;end$$;create schema cron;create table cron.job(jobname text);create function cron.schedule(text,text,text) returns bigint language plpgsql as $$begin insert into cron.job values($1);return 1;end$$;insert into push_devices values('${a}','ExpoPushToken[a]'),('${b}','ExpoPushToken[b]');`);
- const notifications=fs.readFileSync('supabase/quiz-notifications.sql','utf8').replace('create extension if not exists pg_cron;','');await db.exec(notifications);await db.exec(notifications);
- const asUser=async(id,admin=false)=>{await db.query("select set_config('test.uid',$1,false),set_config('test.admin',$2,false)",[id,String(admin)]);};
- await asUser(a,true);const day=(await db.query('select current_date::text as day')).rows[0].day,at=new Date().toISOString();let dailyId;
- for(let i=0;i<10;i++){const q={category:'Coran',question:'Question de test '+i,answers:['A','B','C'].map(id=>({id,text:id})),correctAnswerId:'B',explanation:'Explication de test',sourceTitle:'Source de test',publicationDate:day,isDailyQuestion:i===0,availableForChallenges:true,isActive:true};const r=await db.query('select quiz_admin_save($1::jsonb) as id',[JSON.stringify(q)]);if(i===0)dailyId=r.rows[0].id;}
- const questionIds=(await db.query('select id from quiz_questions order by created_at,id')).rows.map(q=>q.id);
- const setDraft={title:'Coran — quiz thématique',category:'Coran',questionIds,isActive:true};
- await assert.rejects(db.query('select quiz_admin_save_set($1::jsonb)',[JSON.stringify({...setDraft,questionIds:questionIds.slice(0,9)})]),/exactement 10/);
- await assert.rejects(db.query('select quiz_admin_save_set($1::jsonb)',[JSON.stringify({...setDraft,questionIds:Array(10).fill(questionIds[0])})]),/exactement 10/);
- const setId=(await db.query('select quiz_admin_save_set($1::jsonb) as id',[JSON.stringify(setDraft)])).rows[0].id;
- assert.equal((await db.query('select quiz_admin_sets() as s')).rows[0].s[0].title,setDraft.title);
- await assert.rejects(db.query('select quiz_admin_save($1::jsonb)',[JSON.stringify({category:'Coran',question:'Deuxième quotidienne',answers:['A','B','C'].map(id=>({id,text:id})),correctAnswerId:'A',sourceTitle:'Test',publicationDate:day,isDailyQuestion:true})]),/duplicate/);
- await asUser(a);const snapshot=async()=> (await db.query('select quiz_snapshot($1) as s',[day])).rows[0].s;
- let s=await snapshot();assert.equal(s.daily.correctAnswerId,undefined);assert.equal(s.daily.explanation,undefined);
- await assert.rejects(db.query('select quiz_admin_list()'),/administrateur/);await assert.rejects(db.query('select quiz_admin_sets()'),/administrateur/);assert.equal(s.quizSets[0].title,setDraft.title);assert.equal(s.quizSets[0].questionIds,undefined);
- await db.exec('set role authenticated');await assert.rejects(db.query('select * from quiz_questions'),/permission denied/);await db.exec('reset role');
- await db.query('select quiz_answer_daily($1,$2,$3,$4)',[dailyId,'A',day,at]);await db.query('select quiz_answer_daily($1,$2,$3,$4)',[dailyId,'B',day,at]);s=await snapshot();assert.equal(s.responses.length,1);assert.equal(s.responses[0].selectedAnswerId,'A');assert.equal(s.responses[0].isCorrect,false);assert.equal(s.responses[0].question.correctAnswerId,'B');
- const cid=(await db.query('select quiz_create_challenge($1,10,$2) as id',[b,setId])).rows[0].id;let c=(await snapshot()).challenges[0],ids=c.questions.map(q=>q.id);assert.equal(ids.length,10);assert.deepEqual(ids,questionIds);assert.equal(new Set(ids).size,10);assert.equal(Math.round((Date.parse(c.expiresAt)-Date.parse(c.createdAt))/3600000),48);
- await asUser(b);assert.deepEqual((await snapshot()).challenges[0].questions.map(q=>q.id),ids);
- await asUser(outsider);assert.equal((await snapshot()).challenges.length,0);await assert.rejects(db.query('select quiz_answer_challenge($1,$2,$3)',[cid,ids[0],'B']),/inaccessible/);await assert.rejects(db.query('select quiz_create_challenge($1,5)',[a]),/ami/);
- await asUser(a);for(const id of ids)await db.query('select quiz_answer_challenge($1,$2,$3)',[cid,id,'B']);c=(await snapshot()).challenges[0];assert.equal(c.status,'pending');assert.equal(c.answers[0].isCorrect,undefined);assert.equal(c.questions[0].explanation,undefined);await db.query('select quiz_answer_challenge($1,$2,$3)',[cid,ids[0],'A']);assert.equal((await snapshot()).challenges[0].answers.length,10);
- await asUser(b);for(const id of ids)await db.query('select quiz_answer_challenge($1,$2,$3)',[cid,id,'A']);c=(await snapshot()).challenges[0];assert.equal(c.status,'completed');assert.equal(c.answers.filter(x=>x.userId===a&&x.isCorrect).length,10);assert.equal(c.answers.filter(x=>x.userId===b&&x.isCorrect).length,0);assert.equal(c.questions[0].explanation,'Explication de test');assert.ok(c.completedAt);
- const small=(await db.query('select quiz_create_challenge($1,5) as id',[a])).rows[0].id;await db.query("update quiz_challenges set expires_at=now()-interval '1 second' where id=$1",[small]);c=(await snapshot()).challenges.find(x=>x.id===small);assert.equal(c.status,'expired');await assert.rejects(db.query('select quiz_answer_challenge($1,$2,$3)',[small,c.questions[0].id,'B']),/expiré/);
- assert.equal((await db.query("select count(*)::integer as n from push_log where body->>'title' like '%te défie%'")).rows[0].n,2);
- assert.equal((await db.query("select count(*)::integer as n from push_log where body->>'title'='Résultat disponible 🏆'")).rows[0].n,2);
- assert.equal((await db.query("select count(*)::integer as n from push_log where body->>'title' like '%a terminé son quiz%'")).rows[0].n,1);
- await asUser(a);await db.query('select quiz_set_notifications(false,$1)',['Europe/Paris']);await db.query("select private.quiz_push($1,'disabled','Test','Test','{}')",[a]);assert.equal((await db.query("select count(*)::integer as n from push_log where body->>'title'='Test'")).rows[0].n,0);
- await db.query('select private.quiz_notify_daily()');await db.query('select private.quiz_notify_daily()');
- await asUser(a,true);await db.query('select quiz_admin_delete($1)',[dailyId]);await asUser(a);assert.equal((await snapshot()).responses[0].question.question,'Question de test 0');assert.equal((await snapshot()).challenges.find(x=>x.id===cid).questions.length,10);
- }finally{await db.close();}
-});
+-- Après quiz.sql et push-delivery-monitor.sql. Réutilise les appareils Expo et préférences existants.
+begin;
+alter table public.notification_preferences add column if not exists quiz_enabled boolean not null default true;
+alter table public.notification_preferences add column if not exists quiz_timezone text not null default 'Europe/Paris';
+create table if not exists private.quiz_notification_events(user_id uuid not null,event_key text not null,created_at timestamptz not null default now(),primary key(user_id,event_key));
+revoke all on private.quiz_notification_events from public,anon,authenticated;
+create or replace function private.quiz_push(p_user uuid,p_event text,p_title text,p_body text,p_data jsonb) returns void language plpgsql security definer set search_path='' as $$
+declare device record;
+begin
+ if exists(select 1 from public.notification_preferences where user_id=p_user and not quiz_enabled) then return;end if;
+ insert into private.quiz_notification_events(user_id,event_key) values(p_user,p_event) on conflict do nothing;
+ if not found then return;end if;
+ for device in select expo_push_token from public.push_devices where user_id=p_user loop
+ perform private.send_expo_push(url:='https://exp.host/--/api/v2/push/send',body:=jsonb_build_object('to',device.expo_push_token,'title',p_title,'body',p_body,'data',p_data,'sound','default','channelId','messages','priority','high'),headers:='{"Content-Type":"application/json"}'::jsonb,timeout_milliseconds:=5000);
+ end loop;
+ exception when others then raise warning 'Quiz notification pending: %',SQLERRM;
+end;$$;
+create or replace function private.quiz_challenge_notification() returns trigger language plpgsql security definer set search_path='' as $$
+declare c public.quiz_challenges;recipient uuid;name text;total integer;
+begin
+ if TG_TABLE_NAME='quiz_challenges' then
+ if TG_OP='INSERT' then select display_name into name from public.friend_profiles where id=new.creator_user_id;
+ perform private.quiz_push(new.opponent_user_id,'invite:'||new.id,coalesce(name,'Un ami')||' te défie 🏆',new.question_count||' questions t’attendent. À toi de jouer !',jsonb_build_object('kind','quiz-challenge','challengeId',new.id));
+ elsif new.status='completed' and old.status<>'completed' then
+ perform private.quiz_push(new.creator_user_id,'result:'||new.id,'Résultat disponible 🏆','Votre défi est terminé.',jsonb_build_object('kind','quiz-result','challengeId',new.id));
+ perform private.quiz_push(new.opponent_user_id,'result:'||new.id,'Résultat disponible 🏆','Votre défi est terminé.',jsonb_build_object('kind','quiz-result','challengeId',new.id));end if;
+ else
+ select * into c from public.quiz_challenges where id=new.challenge_id;
+ select count(*) into total from public.quiz_challenge_answers where challenge_id=c.id;
+ if total<c.question_count*2 and (select count(*) from public.quiz_challenge_answers where challenge_id=c.id and user_id=new.user_id)=c.question_count then
+ recipient=case when new.user_id=c.creator_user_id then c.opponent_user_id else c.creator_user_id end;
+ select display_name into name from public.friend_profiles where id=new.user_id;
+ perform private.quiz_push(recipient,'finished:'||c.id||':'||new.user_id,coalesce(name,'Ton ami')||' a terminé son quiz 👀','À toi de jouer !',jsonb_build_object('kind','quiz-challenge','challengeId',c.id));end if;
+ end if;return new;
+end;$$;
+drop trigger if exists quiz_challenge_push on public.quiz_challenges;
+create trigger quiz_challenge_push after insert or update of status on public.quiz_challenges for each row execute function private.quiz_challenge_notification();
+drop trigger if exists quiz_answer_push on public.quiz_challenge_answers;
+create trigger quiz_answer_push after insert on public.quiz_challenge_answers for each row execute function private.quiz_challenge_notification();
+create or replace function public.quiz_set_notifications(p_enabled boolean,p_timezone text) returns void language plpgsql security definer set search_path='' as $$
+begin
+ if auth.uid() is null or not exists(select 1 from pg_catalog.pg_timezone_names where name=p_timezone) then raise exception 'Préférence invalide';end if;
+ insert into public.notification_preferences(user_id,quiz_enabled,quiz_timezone) values(auth.uid(),p_enabled,p_timezone) on conflict(user_id) do update set quiz_enabled=excluded.quiz_enabled,quiz_timezone=excluded.quiz_timezone;
+end;$$;
+create or replace function private.quiz_notify_daily() returns void language plpgsql security definer set search_path='' as $$
+declare person record;v_day date;
+begin
+ for person in select distinct d.user_id,coalesce(p.quiz_timezone,'Europe/Paris') as tz from public.push_devices d left join public.notification_preferences p on p.user_id=d.user_id where coalesce(p.quiz_enabled,true) loop
+ v_day=(now() at time zone person.tz)::date;
+ if extract(hour from now() at time zone person.tz) between 9 and 21 and exists(select 1 from public.quiz_questions where is_active and is_daily_question and publication_date=v_day) and not exists(select 1 from public.quiz_daily_responses where user_id=person.user_id and quiz_daily_responses.day=v_day) then
+ perform private.quiz_push(person.user_id,'daily:'||v_day,'Question du jour disponible 📖','Teste tes connaissances aujourd’hui.',jsonb_build_object('kind','quiz-daily'));
+ end if;end loop;
+end;$$;
+revoke all on function private.quiz_push(uuid,text,text,text,jsonb),private.quiz_challenge_notification(),private.quiz_notify_daily() from public,anon,authenticated;
+revoke all on function public.quiz_set_notifications(boolean,text) from public,anon;
+grant execute on function public.quiz_set_notifications(boolean,text) to authenticated;
+-- Planification additive : aucune remise à zéro ni suppression d’historique.
+create extension if not exists pg_cron;
+select cron.schedule('quiz-daily-notification','0 * * * *','select private.quiz_notify_daily()') where not exists(select 1 from cron.job where jobname='quiz-daily-notification');
+commit;

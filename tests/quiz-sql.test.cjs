@@ -36,3 +36,5 @@ test('Quiz PostgreSQL: rights, one daily answer, frozen shared questions, hidden
  await asUser(a,true);await db.query('select quiz_admin_delete($1)',[dailyId]);await asUser(a);assert.equal((await snapshot()).responses[0].question.question,'Question de test 0');assert.equal((await snapshot()).challenges.find(x=>x.id===cid).questions.length,10);
  }finally{await db.close();}
 });
+
+test('Combined Quiz installation contains exactly the tested migrations',()=>{assert.equal(fs.readFileSync('supabase/quiz-install.sql','utf8').replace(/\r\n/g,'\n'),(fs.readFileSync('supabase/quiz.sql','utf8')+'\n'+fs.readFileSync('supabase/quiz-notifications.sql','utf8')).replace(/\r\n/g,'\n'));});
