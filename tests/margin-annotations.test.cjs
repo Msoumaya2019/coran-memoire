@@ -27,3 +27,11 @@ test('white theme and accent survive account serialization and an older remote s
  assert.equal(restored.theme,'white');assert.equal(restored.accent,'gold');
  const base={...local,readPages:[1]},a={...base,readPages:[1,2]},b={...base,readPages:[1,3]};assert.deepEqual(mergeOfflineState(base,a,b).readPages,[1,2,3]);
 });
+
+
+test('interface font survives serialization, older remote responses, and explicit progress reset',()=>{
+ const {resetAllProgress}=require('./build/core/program');
+ const local={...defaultState(),uiFont:'system',updatedAt:'2026-10-03T10:00:00Z'},remote={...local,updatedAt:'2026-10-03T11:00:00Z'};delete remote.uiFont;
+ const restored=reconcileState(JSON.parse(JSON.stringify(local)),remote);
+ assert.equal(restored.state.uiFont,'system');assert.equal(restored.shouldPush,true);assert.equal(resetAllProgress(local).uiFont,'system');
+});

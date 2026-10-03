@@ -12,22 +12,35 @@ const listeners=new Set<(value:DownloadState)=>void>();
 let running:Promise<void>|null=null;
 let task:ReturnType<typeof FS.createDownloadResumable>|null=null;
 let pauseRequested=false;
+let pausing:Promise<void>|null=null;
 function publish(value:DownloadState){state=value;listeners.forEach(fn=>fn(value));}
 export function quranDownloaded(){try{const file=readyFile();if(!file.exists)return false;const ready=JSON.parse(file.textSync());return ready.version===1&&ready.files===9060;}catch{return false;}}
 export function quranDownloadState():DownloadState{return quranDownloaded()?{phase:'ready',progress:1}:state.phase==='ready'?{phase:'idle',progress:0}:state;}
 export function subscribeQuranDownload(fn:(value:DownloadState)=>void){listeners.add(fn);fn(quranDownloadState());return ()=>{listeners.delete(fn);};}
 export function quranLineUri(page:number,line:number){return new File(root(),`${String(page).padStart(3,'0')}-${String(line+1).padStart(2,'0')}.png`).uri;}
-export async function pauseQuranDownload(){
- if(!task||state.phase!=='downloading')return;
+export function pauseQuranDownload():Promise<void>{
+ if(pausing)return pausing;
+ if(!task||state.phase!=='downloading')return Promise.resolve();
  pauseRequested=true;
- const saved=await task.pauseAsync();
- new File(root(),'resume.json').write(JSON.stringify(saved));
- publish({phase:'paused',progress:state.progress});
+ const active=task;
+ pausing=(async()=>{
+  const saved=await active.pauseAsync();
+  if(saved.resumeData)new File(root(),'resume.json').write(JSON.stringify({...saved,url}));
+  publish({phase:'paused',progress:state.progress});
+ })().finally(()=>{pausing=null;});
+ return pausing;
+}
+export function quranDownloadError(error:unknown){
+ const detail=error instanceof Error?error.message:String(error);
+ if(/space|disk|ENOSPC|storage/i.test(detail))return 'Espace de stockage insuffisant. Libère de la place puis réessaie.';
+ if(/ERR_FILESYSTEM_CANNOT_DOWNLOAD|network|offline|connection|timed? ?out/i.test(detail))return 'Le téléchargement a été interrompu. Vérifie ta connexion et réessaie en gardant l’application ouverte.';
+ return detail;
 }
 const yieldUI=()=>new Promise<void>(resolve=>setTimeout(resolve,0));
 export function ensureQuranDownloaded():Promise<void>{
  if(quranDownloaded())return Promise.resolve();
  if(running)return running;
+ if(pausing)return pausing.then(()=>ensureQuranDownloaded());
  running=install().finally(()=>{running=null;task=null;});
  return running;
 }
@@ -39,10 +52,23 @@ async function install(){
   let completed=new File(root(),'download-complete.json').exists&&zip.exists&&zip.size===archiveBytes;
   if(!completed){
    let resumeData:string|undefined;
-   if(resume.exists&&zip.exists){try{resumeData=JSON.parse(await resume.text()).resumeData;}catch{}}
+   if(resume.exists){try{const saved=JSON.parse(await resume.text());if(!saved.url||saved.url===url)resumeData=saved.resumeData;}catch{}}
    publish({phase:'downloading',progress:0});
-   task=FS.createDownloadResumable(url,zip.uri,{},event=>publish({phase:'downloading',progress:event.totalBytesExpectedToWrite>0?event.totalBytesWritten/event.totalBytesExpectedToWrite:0}),resumeData);
-   const result=await (resumeData?task.resumeAsync():task.downloadAsync());
+   const createTask=(data?:string)=>FS.createDownloadResumable(url,zip.uri,{sessionType:FS.FileSystemSessionType.FOREGROUND},event=>publish({phase:'downloading',progress:Math.max(0,Math.min(1,event.totalBytesExpectedToWrite>0?event.totalBytesWritten/event.totalBytesExpectedToWrite:0))}),data);
+   task=createTask(resumeData);
+   let result;
+   try{result=await (resumeData?task.resumeAsync():task.downloadAsync());}
+   catch(error){
+    if(pauseRequested)throw error;
+    // iOS keeps resumable bytes in its own temporary file, not at zip.uri.
+    // Stale resume tokens and a failed native transfer must not trap every retry.
+    const detail=error instanceof Error?error.message:String(error);
+    if(!resumeData&&!/ERR_FILESYSTEM_CANNOT_DOWNLOAD/.test(detail))throw error;
+    if(resume.exists)resume.delete();
+    if(zip.exists)zip.delete();
+    publish({phase:'downloading',progress:0,message:'Nouvelle tentative de téléchargement…'});
+    task=createTask();result=await task.downloadAsync();
+   }
    if(pauseRequested||!result)throw new Error('Téléchargement en pause.');
    if(![200,206].includes(result.status)||zip.size!==archiveBytes){if(resume.exists)resume.delete();throw new Error('Téléchargement incomplet. Réessayez avec une connexion stable.');}
    new File(root(),'download-complete.json').write('{}');
@@ -86,7 +112,7 @@ async function install(){
   zip.delete();new File(root(),'download-complete.json').delete();
   publish({phase:'ready',progress:1});
  }catch(error){
-  publish({phase:pauseRequested?'paused':'error',progress:state.progress,message:error instanceof Error?error.message:String(error)});
+  publish({phase:pauseRequested?'paused':'error',progress:state.progress,message:pauseRequested?undefined:quranDownloadError(error)});
   throw error;
  }
 }

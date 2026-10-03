@@ -38,3 +38,14 @@ TypeScript et 188 tests passent, dont la couverture des 604 pages / 6 236 verset
 Les demandes de refonte globale du thème blanc et d'annotations de programme uniquement dans la marge sont des travaux distincts ; ce remplacement de source ne les présente pas comme terminés.
 
 Tests du téléchargement : échec sans activation, pause persistée, installation réelle des 9 060 lignes depuis le ZIP officiel, concurrence dédupliquée et seconde ouverture sans réseau. Les exports Expo Android et iOS passent. À vérifier sur appareils physiques : téléchargement / pause / reprise, espace de stockage insuffisant, fermeture forcée, mode avion après installation, et fluidité d’extraction sous Hermes.
+
+
+## Correctif iOS 0.9.35 (build 47)
+
+Après le signalement ERR_FILESYSTEM_CANNOT_DOWNLOAD, le transfert demande explicitement une session FOREGROUND, au lieu de la session BACKGROUND par défaut. L’application met en pause lors de sa fermeture ou de sa mise en arrière-plan et conserve les données de reprise. Ces données sont utilisées même si le fichier ZIP de destination n’existe pas encore : iOS conserve les octets dans un fichier temporaire natif.
+
+Une reprise périmée ou l’erreur native générique entraîne une seule nouvelle tentative depuis zéro. Seuls le ZIP temporaire et son ancien jeton sont effacés ; les pages déjà installées et les données utilisateur sont conservées. Une pause concurrente ne lance qu’une opération native. L’erreur affichée est explicite et n’expose plus la trace Swift.
+
+Le serveur a répondu HTTP 200 avec la taille attendue 102 608 011 octets. Les tests simulent le refus natif, le jeton périmé, la pause concurrente et l’absence de fichier destination. L’installation des 9 060 lignes à partir du ZIP officiel est également testée. Le téléchargement réel sur l’iPhone ayant signalé l’erreur reste à vérifier après installation de cette version.
+
+Référence API : [Expo FileSystem legacy](https://docs.expo.dev/versions/latest/sdk/filesystem-legacy/) ; comportement confirmé dans les sources natives de la version Expo installée.

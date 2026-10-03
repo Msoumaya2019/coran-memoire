@@ -10,7 +10,7 @@ function harness(){
  const root=path.resolve(__dirname,'..');
  const output=path.join(directory,'service.cjs');
  esbuild.buildSync({entryPoints:[path.join(root,'src/services/quranDownload.ts')],bundle:true,platform:'node',format:'cjs',outfile:output,external:['expo-file-system','expo-file-system/legacy']});
- let downloads=0;
+ let downloads=0,resumes=0,pauses=0;
  class File{
   constructor(parent,...parts){this.uri=path.join(typeof parent==='string'?parent:parent.uri,...parts);}
   get exists(){return fs.existsSync(this.uri);}
@@ -28,15 +28,15 @@ function harness(){
  let mode='normal';
  Module._load=function(name,...args){
   if(name==='expo-file-system')return {File,Directory,Paths:{document:directory}};
-  if(name==='expo-file-system/legacy')return {createDownloadResumable(url,uri,options,progress,resumeData){assert.match(url,/madani_1441/);return {
-   async downloadAsync(){downloads++;if(mode==='pause')return new Promise(resolve=>{finish=resolve;});fs.copyFileSync(archive,uri);progress({totalBytesWritten:102608011,totalBytesExpectedToWrite:102608011});return {status:mode==='error'?503:200};},
-   async resumeAsync(){assert.equal(resumeData,'saved');return this.downloadAsync();},
-   async pauseAsync(){finish?.(undefined);return {resumeData:'saved'};}
+  if(name==='expo-file-system/legacy')return {FileSystemSessionType:{FOREGROUND:1},createDownloadResumable(url,uri,options,progress,resumeData){assert.match(url,/madani_1441/);assert.equal(options.sessionType,1);return {
+   async downloadAsync(){downloads++;if(mode==='native-error'&&downloads===1)throw new Error('ERR_FILESYSTEM_CANNOT_DOWNLOAD: undefined reason');if(mode==='pause')return new Promise(resolve=>{finish=resolve;});if(mode!=='normal'){fs.writeFileSync(uri,'partial');return {status:503};}fs.copyFileSync(archive,uri);progress({totalBytesWritten:102608011,totalBytesExpectedToWrite:102608011});return {status:mode==='error'?503:200};},
+   async resumeAsync(){resumes++;if(mode==='resume-failure')throw new Error('ERR_FILESYSTEM_CANNOT_DOWNLOAD: stale resume');assert.equal(resumeData,'saved');return this.downloadAsync();},
+   async pauseAsync(){pauses++;finish?.(undefined);return {resumeData:'saved'};}
   };}};
   return original.call(this,name,...args);
  };
  let service;try{service=require(output);}finally{Module._load=original;}
- return {service,directory,archive,get downloads(){return downloads;},set mode(value){mode=value;},cleanup(){fs.rmSync(directory,{recursive:true,force:true});}};
+ return {service,directory,archive,get downloads(){return downloads;},get resumes(){return resumes;},get pauses(){return pauses;},set mode(value){mode=value;},cleanup(){fs.rmSync(directory,{recursive:true,force:true});}};
 }
 
 test('Coran 1441 has no embedded image imports in the native bundle',()=>{
@@ -71,4 +71,22 @@ test('official ZIP installs all 9060 original lines once and remains available o
   assert.ok(!files.includes('download.zip'));h.mode='error';await h.service.ensureQuranDownloaded();assert.equal(h.downloads,1);
   unsubscribe();
  }finally{h.cleanup();}
+});
+
+
+test('iOS temporary resume token is used even when destination ZIP does not exist; stale token falls back once',async()=>{
+ const h=harness();try{
+  const dir=path.join(h.directory,'quran/coran_1441');fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'resume.json'),JSON.stringify({resumeData:'saved'}));
+  h.mode='resume-failure';await assert.rejects(h.service.ensureQuranDownloaded());
+  assert.equal(h.resumes,1);assert.equal(h.downloads,1);assert.equal(fs.existsSync(path.join(dir,'resume.json')),false);assert.equal(h.service.quranDownloaded(),false);
+ }finally{h.cleanup();}
+});
+test('native cannot-download failure starts one fresh foreground attempt and never activates partial data',async()=>{
+ const h=harness();try{h.mode='native-error';await assert.rejects(h.service.ensureQuranDownloaded());assert.equal(h.downloads,2);assert.equal(h.service.quranDownloaded(),false);}finally{h.cleanup();}
+});
+test('concurrent pause callbacks share one native pause and retain its token',async()=>{
+ const h=harness();try{h.mode='pause';const pending=h.service.ensureQuranDownloaded(),rejected=assert.rejects(pending);const first=h.service.pauseQuranDownload();assert.equal(first,h.service.pauseQuranDownload());await first;await rejected;assert.equal(h.pauses,1);}finally{h.cleanup();}
+});
+test('download error shown to the user excludes the Swift implementation trace',()=>{
+ const h=harness();try{assert.match(h.service.quranDownloadError(new Error('ERR_FILESYSTEM_CANNOT_DOWNLOAD: undefined reason at Promise.swift:65')),/connexion/);assert.doesNotMatch(h.service.quranDownloadError(new Error('ERR_FILESYSTEM_CANNOT_DOWNLOAD: undefined reason')),/undefined|Swift|ERR_/);}finally{h.cleanup();}
 });

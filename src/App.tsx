@@ -219,7 +219,7 @@ function AppContent(){
   const due=reviewsEnabled(state)?state.revisions.filter(r=>r.due<=today):[];
   const allDone=state.sessions.filter(s=>s.status==='done').length;
   const finishEstimate=state.sessions.filter(s=>s.status==='todo').at(-1)?.date;
-  applyTheme(state.theme??'white',state.accent);
+  applyTheme(state.theme??'white',state.accent,state.uiFont);
 
   return <View style={{flex:1,backgroundColor:colors.cream}}><SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}} {...(reader||socialView==='friends'||tab==='Amis'?{}:edgeBack.panHandlers)}><StatusBar barStyle="dark-content" />{(connectivity.offline||connectivity.restored)&&<View accessibilityLiveRegion="polite" style={{paddingHorizontal:14,paddingVertical:6,backgroundColor:colors.soft}}><Label style={{fontSize:11,color:colors.muted,textAlign:'center'}}>{connectivity.offline?'Mode hors connexion — les modifications seront synchronisées automatiquement':'Connexion rétablie'}</Label></View>}
     {!reader&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&socialView!=='admin'&&<AppTopNavigation tab={tab} onTab={name=>{setTab(name);setSocialView(null);}} firstName={state.profile?.firstName} onProfile={()=>setUtilityView('profile')} onSettings={()=>setUtilityView('settings')} title={utilityView==='goal'?'Mon objectif':utilityView==='appearance'?'Apparence':utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'} showTabs={!utilityView} onBack={utilityView?()=>setUtilityView(null):undefined}/>}

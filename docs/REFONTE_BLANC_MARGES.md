@@ -29,3 +29,8 @@ Les menus Page/Verset réutilisent `SelectField` et les fonctions de plage exist
 ## À vérifier sur appareils
 
 iPhone 17 Pro Max et petit iPhone : safe areas, Dynamic Island, tailles de texte système, changements de thème après relancement, zoom/paysage des quatre sources, lecture audio et répétitions, microphone, notifications, téléchargements hors ligne et synchronisation Supabase après reconnexion. L’IPA du workflow est non signé et nécessite la procédure de signature/installation habituelle.
+
+
+## Complément 0.9.35 (build 47) — Police
+
+Réglages → Apparence → Police de l’interface : Élégante (titres Cormorant et corps système), Moderne (système), Classique (Cormorant). Changement immédiat, polices embarquées disponibles hors ligne, préférence optionnelle `uiFont` dans le JSON utilisateur existant. Rétrocompatibilité avec les anciens clients et conservation lors d’un reset explicite de progression. Arabe hors Mushaf toujours Amiri ; glyphes et images du Mushaf inchangés. Aperçu contrôlé sur 440 px, test de sélection Moderne et Classique, sérialisation et récupération cloud testées. Suite : 198 tests réussis.
