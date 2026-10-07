@@ -31,3 +31,13 @@ La minuterie programme l’arrêt sur le lecteur natif Expo existant (DispatchSo
 ## Vérification sur appareils
 
 Avec un vrai fichier pour deux récitateurs : vérifier le streaming, la reprise après fermeture, les changements rapides de récitateur, les téléchargements/interruption réseau, la suppression d’un fichier local, le passage Coran/Roqya, les commandes média, la minuterie et la lecture écran verrouillé sur iPhone et Android. L’export Metro et l’aperçu web ne valident pas les services audio natifs.
+
+## Administration depuis l’application
+
+Après `roqya.sql`, exécuter `roqya-admin.sql` dans le même projet (la migration sociale existante doit déjà fournir `private.is_app_admin()`). Cette extension réutilise `app_admins`, sans modifier les rôles existants. Les administrateurs peuvent lire les éléments désactivés, ajouter et modifier les trois tables et envoyer les médias dans les deux buckets dédiés. Les utilisateurs ordinaires conservent seulement la lecture des éléments actifs. Aucune clé service role n’est nécessaire dans l’application.
+
+Dans Réglages → Espace Administrateur → Gestion des Roqyas : ajouter un récitateur, une Roqya, puis un fichier audio en choisissant les deux. Le sélecteur natif permet d’envoyer un MP3/M4A ou une image depuis le téléphone. Le transfert utilise le fichier directement et affiche les octets réels, sans charger le MP3 entier en mémoire JavaScript. Renseigner sa durée réelle en secondes puis enregistrer. Les nouveaux éléments sont désactivés par défaut ; activer les trois pour publier. On peut modifier les métadonnées, remplacer un fichier, choisir l’ordre et désactiver sans supprimer.
+
+Un envoi terminé doit être enregistré pour être associé. Annuler retire les fichiers temporaires envoyés dans ce formulaire. Les anciens fichiers associés sont conservés ; les transferts abandonnés par fermeture forcée peuvent nécessiter un nettoyage depuis Storage. Les politiques empêchent la suppression des fichiers encore référencés. Pour remplacer un fichier, envoyer une nouvelle version avec un nouveau chemin, afin d’invalider correctement les anciens téléchargements locaux.
+
+La migration doit être appliquée avant que l’écran puisse enregistrer. Sans accès au dashboard Supabase dans cette session, les migrations sont fournies et testées localement mais ne sont pas exécutées à distance.

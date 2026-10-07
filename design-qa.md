@@ -7,3 +7,5 @@ Résultat : conforme à l’univers demandé. Fond crème/blanc, vert doux, acce
 Interactions vérifiées : changement de récitateur, vitesse, favoris, seek, lecture/pause, mini-lecteur et réouverture. Aucun message d’erreur navigateur. Les autres thèmes utilisent les couleurs du thème existant.
 
 Limites : l’aperçu simule l’audio. Les commandes système, la lecture verrouillée et les restrictions des systèmes doivent être testées sur appareils avec des fichiers réels. Les tests automatisés couvrent les téléchargements, les reprises et les permissions SQL.
+
+Administration Roqya : création via le formulaire réel vérifiée dans l’aperçu web, écran inspecté à 393 × 852. L’aperçu simule Supabase et l’envoi ; les politiques SQL et le transfert natif sont testés séparément. Composants et thème existants réutilisés.
