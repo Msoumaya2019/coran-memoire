@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {AppState,Image} from 'react-native';
 import {setAudioModeAsync} from 'expo-audio';
-import {createManagedAudioPlayer} from './audioFocus';
+import {createManagedAudioPlayer,observeAudioFocusLost} from './audioFocus';
 import {cachedRoqyas,deleteRoqyaDownload,downloadRoqya,fetchRoqyas,loadRoqyaLibrary,observeRoqyaDownloads,roqyaError,roqyaPlaybackUrl,saveRoqyaLibrary} from './roqya';
 import {resumeRoqyaPosition,Roqya,RoqyaAudio,RoqyaLibrary,selectedRoqyaAudio} from '../core/roqya';
 
@@ -37,8 +37,9 @@ export function useRoqya(userId?:string){
    if(status.didJustFinish){deadline.current=null;setTimerState(null);setPlaying(false);remember();}
    else if(Date.now()-lastSaved.current>5000&&status.playing){lastSaved.current=Date.now();remember();}
   });
+  const focus=observeAudioFocusLost?.(p,()=>{generation.current++;pendingResume.current=null;switching.current=false;setPlaying(false);setLoading(false);remember();});
   const ticker=setInterval(timerCheck,1000),foreground=AppState.addEventListener('change',status=>{timerCheck();remember();if(status==='active')refresh();});
-  return()=>{generation.current++;remember();pendingResume.current=null;subscription.remove();foreground.remove();clearInterval(ticker);p.clearLockScreenControls();operations.current.finally(()=>p.release()).catch(()=>{});player.current=null;};
+  return()=>{generation.current++;remember();pendingResume.current=null;subscription.remove();focus?.();foreground.remove();clearInterval(ticker);p.clearLockScreenControls();operations.current.finally(()=>p.release()).catch(()=>{});player.current=null;};
  },[]);
  useEffect(()=>{if(owner.current===userId)return;generation.current++;remember();player.current?.pause();player.current?.clearLockScreenControls();pendingResume.current=null;latest.current=null;setCurrent(null);setPlaying(false);setLoading(false);deadline.current=null;setTimerState(null);owner.current=userId;const saved=loadRoqyaLibrary(userId);lib.current=saved;setLibrary(saved);},[userId]);
  const nativeTimer=()=>{const p=player.current as TimedPlayer|null;if(typeof deadline.current==='number'){if(!p?.setSleepTimer){setError('La minuterie nécessite la nouvelle compilation de l’application.');deadline.current=null;setTimerState(null);return;}p.setSleepTimer(Math.max(0,(deadline.current-Date.now())/1000));}else p?.setSleepTimer?.(null);};

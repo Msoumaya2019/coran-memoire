@@ -1,32 +1,9 @@
-# Coran Test — vérification du 28 septembre 2026
+# Roqya — vérification visuelle
 
-- Page 10 comparée à la référence : mêmes glyphes QPC V4, lignes, mots, couleurs et numéros de versets issus de l’IPA.
-- Plein écran sans header, boutons, cadre ni lecteur visible.
-- Swipe RTL dans les deux sens : 10 → 11 → 10.
-- Pages 1 et 604 contrôlées ; titres décoratifs et basmala originaux conservés.
-- Formats navigateur contrôlés : 320×568, 393×852, 430×932 et 360×800. Page entière avec ratio conservé, sans débordement.
-- Overlay invisible ; positions normalisées mesurées par mot, regroupées par verset et ligne.
-- TypeScript : réussi. Tests : 122 réussis.
-- Les essais navigateur ne remplacent pas une validation sur iPhone et Android physiques : ces essais restent à réaliser.
+Comparaison effectuée avec les quatre maquettes fournies, à largeur mobile de 393 px. Aperçus produits à partir des composants React Native réels via react-native-web, avec données de démonstration uniquement dans le script d’aperçu.
 
-Capture : work-dist/coran-test-page10.png (artefact local non versionné).
+Résultat : conforme à l’univers demandé. Fond crème/blanc, vert doux, accents dorés, cartes arrondies, couvertures sobres, lecteur audio sans versets. Accueil, catalogue, bibliothèque, lecteur et état vide inspectés. Les filtres trop hauts et la disposition de la carte principale ont été corrigés après comparaison. La navigation et la typographie existantes sont conservées ; les contenus longs défilent sur les petits écrans.
 
-## Lecteur commun — version 0.9.25
+Interactions vérifiées : changement de récitateur, vitesse, favoris, seek, lecture/pause, mini-lecteur et réouverture. Aucun message d’erreur navigateur. Les autres thèmes utilisent les couleurs du thème existant.
 
-- Toutes les sources utilisent le même en-tête compact et les trois actions flottantes.
-- Coran Tajweed contrôlé sur 320×568 : commandes lisibles, menu, plein écran ; Médine sur 430×932.
-- Coran Test : traduction réelle, sélection de 2:66, deux zones de surlignage et un indicateur de marque-page, reprise page 10, lecteur audio partagé et changement de source.
-- TypeScript et 125 tests réussis, également dans le job iOS GitHub.
-- Aucun test audio/microphone physique n’est revendiqué ; appareils iPhone et Android à vérifier.
-- Captures de l’aperçu conservées localement dans work-dist ; certains captures du navigateur subissent une réduction liée à sa mise à l’échelle.
-
-
-## Version 38 — lecteur commun sans header
-
-Aperçu navigateur vérifié : Coran Test page 10 en 393×852, Coran Tajweed
-en révision en 320×568. Aucun header ; cinq actions identiques ; quatre cartes
-Plus et accès à la traduction, au choix de source et au microphone compact.
-Les pages conservent le ratio et sont alignées en haut. Les captures CUA comportent
-un facteur d’échelle de l’aperçu ; elles ne prouvent pas les safe areas natives.
-TypeScript valide, 130 tests passent. Microphone, écoute et safe areas physiques
-iPhone/Android restent à tester. Aucune migration de données.
+Limites : l’aperçu simule l’audio. Les commandes système, la lecture verrouillée et les restrictions des systèmes doivent être testées sur appareils avec des fichiers réels. Les tests automatisés couvrent les téléchargements, les reprises et les permissions SQL.
