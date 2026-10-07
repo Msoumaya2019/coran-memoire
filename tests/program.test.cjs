@@ -7,6 +7,48 @@ const toumoun=require('../src/data/toumoun.json');
 const t=require('./build/core/toumoun.js');
 const monday='2026-09-21';
 
+test('pages et rubu regroupent les petites sourates dans une séance complète',()=>{
+  for(const direction of ['fromStart','fromNas'])for(const pace of ['page','page2','quarter']){
+    const range=pace==='page'?q.pageRange(604):pace==='page2'?{start:q.pageRange(603).start,end:6236}:q.quarters.at(-1);
+    const state=p.generateProgram({...p.defaultState(),goal:{label:'Petites sourates',ranges:[range],direction},pace},monday,1);
+    assert.equal(state.sessions.length,1);
+    assert.deepEqual({start:state.sessions[0].start,end:state.sessions[0].end},{start:range.start,end:range.end});
+    assert.equal(state.sessions[0].date,monday);
+  }
+});
+
+test('un passage connu reste exclu de la séance page',()=>{
+  const range=q.pageRange(604),known=q.surahs[112];
+  const state=p.generateProgram(p.markKnowledge({...p.defaultState(),goal:{label:'Page 604',ranges:[range],direction:'fromNas'},pace:'page'},known,'perfect'),monday,1);
+  const ids=state.sessions.flatMap(s=>q.expand([s]));
+  assert.deepEqual([...ids].sort((a,b)=>a-b),q.expand([range]).filter(id=>id<known.start||id>known.end));
+});
+test('depuis An-Nâs chaque page ou rubu complet reste une unité même aux sourates chevauchantes',()=>{
+  for(const pace of ['page','quarter']){
+    const state=p.generateProgram({...p.defaultState(),goal:p.goalFromPreset('amma','fromNas'),pace,learningDays:[0,1,2,3,4,5,6]},monday);
+    for(const session of state.sessions){
+      const boundary=pace==='page'?q.pageRange(q.pageOf(session.start)):q.quarters.find(r=>session.start>=r.start&&session.start<=r.end);
+      assert.equal(session.start,Math.max(boundary.start,state.goal.ranges[0].start));
+      assert.equal(session.end,boundary.end);
+    }
+    const ids=state.sessions.flatMap(s=>q.expand([s]));
+    assert.deepEqual(ids.sort((a,b)=>a-b),q.expand(state.goal.ranges));
+  }
+});
+
+test('les anciennes séances page sont regroupées sans déplacer les dates ou modifier le progrès',()=>{
+  const sessions=q.surahs.slice(111).map((s,i)=>({id:`old-${i}`,date:monday,scheduledDate:monday,start:s.start,end:s.end,unit:'page',status:'todo'}));
+  const state={...p.defaultState(),sessions};
+  const merged=p.migrateReaderState(state);
+  assert.equal(merged.sessions.length,1);
+  assert.equal(merged.sessions[0].start,q.pageRange(604).start);
+  assert.equal(merged.sessions[0].end,6236);
+  assert.equal(merged.sessions[0].date,monday);
+  const partial={...state,studyProgress:{'learning:old-1':{status:'partial'}}};
+  assert.deepEqual(p.migrateReaderState(partial).sessions,sessions);
+  assert.deepEqual(p.migrateReaderState({...state,sessions:sessions.map(s=>({...s,unit:'verse3'}))}).sessions,sessions.map(s=>({...s,unit:'verse3'})));
+});
+
 test('un nouveau téléphone récupère la sauvegarde distante avant tout progrès local',()=>{
   const fresh=p.defaultState();
   assert.equal(fresh.updatedAt,'1970-01-01T00:00:00.000Z');
@@ -205,7 +247,8 @@ test('depuis An-Nâs, les passages connus sont sautés et le rythme page garde l
   state=p.markKnowledge(state,q.surahs[113],'perfect');
   state=p.generateProgram(state,monday,2);
   const future=state.sessions.filter(s=>s.status==='todo');
-  assert.equal(future[0].start,q.surahs[112].start);
+  assert.equal(future[0].start,q.pageRange(604).start);
+  assert.equal(future[0].end,q.surahs[112].end);
   assert(future.every(s=>s.end<q.surahs[113].start));
   assert(future.every((s,i)=>i===0||s.date!==future[i-1].date||q.surahAt(s.start).number<=q.surahAt(future[i-1].start).number));
   const ids=future.flatMap(s=>Array.from({length:s.end-s.start+1},(_,i)=>s.start+i));

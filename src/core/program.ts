@@ -57,10 +57,30 @@ export function goalFromPreset(preset:GoalPreset,direction:LearningDirection='fr
 export const defaultState = (): AppState => ({reviewCycleHistory:[],consolidationHistory:[],schema:1,studyProgress:{},onboardingDone:false,knowledge:{},goal:{label:'Juz’ ‘Amma',ranges:[{start:5673,end:6236}]},pace:'verse3',learningDays:[1,2,3,4,5],sessions:[],revisions:[],memorizedAt:{},reviewSettings:{enabled:true,cycleDays:7},reviewHistory:[],reviewDue:{},difficultyMarkers:{},difficultyHistory:[],reviewCycle:null,reviewConsolidations:{},reviewPriorityDue:{},theme:'white',notifications:{messages:true,learning:false},reader:{mushaf:'coranTest',followAudio:true},updatedAt:'1970-01-01T00:00:00.000Z'});
 // Keep the original source key: old Coran Test preferences and bookmarks stay valid.
 export function migrateReaderState(state:AppState):AppState{
+  state=mergePhysicalLearningSessions(state);
   if(['tawjeed_test_2','tajweed_test_2','medine_test'].includes(state.reader?.mushaf as string))state={...state,reader:{...state.reader!,mushaf:'coran_1441'}};
   if(state.sessions.some(s=>!s.scheduledDate))state={...state,sessions:state.sessions.map(s=>s.scheduledDate?s:{...s,scheduledDate:s.date})};
   if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
   return {...state,reader:{...state.reader,mushaf:'coranTest',followAudio:state.reader?.followAudio!==false}};
+}
+/** Repair untouched plans split at surah boundaries without moving their dates. */
+function mergePhysicalLearningSessions(state:AppState):AppState {
+  const groups=new Map<string,Session[]>();
+  for(const session of state.sessions){
+    if(session.status!=='todo'||session.unit.startsWith('verse')||state.studyProgress?.[`learning:${session.id}`])continue;
+    const key=`${session.date}:${session.scheduledDate??session.date}:${session.unit}`;
+    const group=groups.get(key)??[];group.push(session);groups.set(key,group);
+  }
+  const replacements=new Map<string,Session>(),removed=new Set<string>();
+  for(const group of groups.values()){
+    const sorted=[...group].sort((a,b)=>a.start-b.start);let previous:Session|undefined;
+    for(const session of sorted){
+      if(previous&&previous.end+1===session.start){previous={...previous,end:session.end};replacements.set(previous.id,previous);removed.add(session.id);}
+      else previous=session;
+    }
+  }
+  if(!removed.size)return state;
+  return {...state,sessions:state.sessions.filter(s=>!removed.has(s.id)).map(s=>replacements.get(s.id)??s)};
 }
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   local=migrateReaderState(local);if(remote)remote=migrateReaderState(remote);
@@ -194,6 +214,14 @@ export function generateProgram(state: AppState, from=todayLocal(), days=20000):
   const known=new Set(memorizedIds(state));
   for(const s of old.filter(partial))for(let id=s.start;id<=s.end;id++)scheduled.add(id);
   let remaining=learningOrderIds(state).filter(id=>!known.has(id)&&!scheduled.has(id));
+  if(state.goal.direction==='fromNas'&&!state.pace.startsWith('verse')){
+    const divisions=state.pace==='toumoun'?verifiedToumouns:state.pace==='quarter'?quarters:state.pace==='halfHizb'?halves:state.pace==='hizb'?hizbs:null;
+    const unitOf=(id:number)=>divisions?divisions.find(d=>id>=d.start&&id<=d.end)!.start:pageOf(id);
+    // Descend by whole units, then read each unit in canonical order. A surah
+    // beginning on the previous page must not interrupt the current page.
+    const units=new Map(remaining.map(id=>[id,unitOf(id)]));
+    remaining.sort((a,b)=>units.get(b)!-units.get(a)!||a-b);
+  }
   const sessions: Session[]=[];
   let serial=0;
   for(let offset=0;offset<days&&remaining.length;offset++){
@@ -201,7 +229,11 @@ export function generateProgram(state: AppState, from=todayLocal(), days=20000):
     if(!state.learningDays.includes(dayOf(date)))continue;
     const chunk=nextChunk(remaining,state.pace);
     remaining=remaining.slice(chunk.length);
-    for(const range of splitContiguous(chunk))sessions.push({id:`${date}-${range.start}-${serial++}`,date,scheduledDate:date,...range,unit:state.pace,status:'todo'});
+    // Physical units may span several surahs. Sort the selected verses back
+    // into reading order and split only at unknown/known gaps, not surah ends.
+    const ranges=state.pace.startsWith('verse')?splitContiguous(chunk):normalizeRanges(chunk.map(id=>({start:id,end:id})));
+    if(!state.pace.startsWith('verse')&&state.goal.direction==='fromNas')ranges.reverse();
+    for(const range of ranges)sessions.push({id:`${date}-${range.start}-${serial++}`,date,scheduledDate:date,...range,unit:state.pace,status:'todo'});
   }
   return touch({...state,sessions:[...old,...sessions].sort((a,b)=>a.date.localeCompare(b.date))});
 }
