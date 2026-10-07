@@ -1,5 +1,5 @@
 import {AppState, addDays, Consolidation, memorizedIds, ReviewCycle, ReviewEvent, ReviewGrade, todayLocal, touch} from './program';
-import {halves, hizbs, juzs, pageOf, pageRange, quarters, Range, surahAt, volume} from './quran';
+import {halves, hizbs, juzs, pageOf, pageRange, quarters, Range, volume} from './quran';
 
 export type ReviewCategory='recent'|'habitual'|'priority';
 export type ReviewTask=Range&{id:string;scheduledDate?:string;category:ReviewCategory;label:string};
@@ -98,7 +98,7 @@ function grouped(ids:number[],category:ReviewCategory):ReviewTask[] {
   const tasks:ReviewTask[]=[];
   for(const id of [...new Set(ids)].sort((a,b)=>a-b)){
     const last=tasks[tasks.length-1];
-    if(last&&last.end+1===id&&surahAt(last.start).number===surahAt(id).number){last.end=id;last.id=`${category}-${last.start}-${id}`;}
+    if(last&&last.end+1===id){last.end=id;last.id=`${category}-${last.start}-${id}`;}
     else tasks.push({id:`${category}-${id}-${id}`,start:id,end:id,category,label:'Versets'});
   }
   return tasks;
@@ -124,7 +124,7 @@ export function reviewPlan(original:AppState,at=todayLocal()):ReviewPlan {
     const steps=consolidationOffsets.map(offset=>({offset,due:c.scheduledDates?.[offset]??addDays(c.learnedAt,offset),completed:c.completed[offset]}));
     const pending=steps.find(s=>!s.completed);if(pending&&pending.due<=at&&!today.has(id))recentIds.push(id);
     const last=rows[rows.length-1];
-    if(last&&last.end+1===id&&surahAt(last.start).number===surahAt(id).number&&last.learnedAt===c.learnedAt&&JSON.stringify(last.steps)===JSON.stringify(steps))last.end=id;
+    if(last&&last.end+1===id&&last.learnedAt===c.learnedAt&&JSON.stringify(last.steps)===JSON.stringify(steps))last.end=id;
     else rows.push({start:id,end:id,learnedAt:c.learnedAt,steps});
   }
   const priorityIds=all.filter(id=>(state.difficultyMarkers?.[id]?.user||state.difficultyMarkers?.[id]?.admin)&&(state.reviewPriorityDue?.[id]??at)<=at&&!today.has(id));
