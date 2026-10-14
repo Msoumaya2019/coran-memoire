@@ -1,3 +1,4 @@
+import {useAppUsage} from './services/appUsage';
 import {useRoqya} from './services/useRoqya';
 import {RoqyaHomeSection,RoqyaScreen,MyRoqyasScreen,RoqyaPlayerScreen,RoqyaMiniPlayer} from './ui/RoqyaScreen';
 import {observeProblemReportSync} from './services/problemReports';
@@ -81,6 +82,7 @@ function AppContent(){
   useEffect(()=>observeOfflineSync(()=>setState(loadState())),[]);
   const [tab,setTab]=useState<Tab>('Accueil');
   const roqya=useRoqya(state.userId);
+  useAppUsage(state.userId);
   const [roqyaView,setRoqyaView]=useState<'catalog'|'library'|'player'|null>(null);
   const [roqyaReturn,setRoqyaReturn]=useState<'catalog'|'library'>('catalog');
   const openRoqyaPlayer=()=>{setReader(null);setRoqyaReturn(roqyaView==='library'?'library':'catalog');setRoqyaView('player');};
