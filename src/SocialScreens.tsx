@@ -1,3 +1,4 @@
+import {AdminRoqyas} from './ui/AdminRoqyas';
 import {AdminProblemReports} from './ui/AdminProblemReports';
 import {AdminQuiz} from './ui/AdminQuiz';
 import {Heading,IconButton,SegmentedControl} from './ui/DesignSystem';
@@ -210,6 +211,7 @@ export function FriendsScreen({onClose,onUnreadChange,initialLinkId,initialCode,
 }
 
 export function AdminScreen({onClose}:{onClose:()=>void}){
+  const [roqyaMode,setRoqyaMode]=useState(false);
   const [dailyMode,setDailyMode]=useState(false);
   const [quizMode,setQuizMode]=useState(false);
   const [problemMode,setProblemMode]=useState(false);
@@ -235,6 +237,7 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
     const until=duration==='forever'?null:new Date(Date.now()+Number(duration)*86400000).toISOString();
     await act(()=>social.suspendMember(target,reason.trim(),until));setTarget('');setReason('');
   };
+  if(roqyaMode)return <AdminRoqyas onClose={()=>setRoqyaMode(false)}/>;
   if(problemMode)return <AdminProblemReports onClose={()=>setProblemMode(false)}/>;
   if(quizMode)return <AdminQuiz onClose={()=>setQuizMode(false)}/>;
   if(dailyMode)return <AdminDailyContents onClose={()=>setDailyMode(false)} />;
@@ -244,6 +247,7 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
   return <ScrollView contentContainerStyle={{padding:18,paddingBottom:45}}>
     <Button secondary onPress={onClose}>← Profil</Button><Title>Modération</Title>
     <Button onPress={()=>setProblemMode(true)}>Problèmes de l’application</Button><Button onPress={()=>setQuizMode(true)}>Quiz</Button><Button onPress={()=>setDailyMode(true)}>Rappels & Invocations</Button>
+    <Button onPress={()=>setRoqyaMode(true)}>Gestion des Roqyas</Button>
     <Button onPress={()=>setAccountsMode(true)}>Comptes et progression</Button>
     <Button onPress={()=>setRecitationMode(true)}>Récitations des élèves</Button>
     <Button secondary onPress={()=>setNotificationMode(true)}>Notifications personnalisées</Button>
@@ -257,7 +261,7 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
       <Label style={{fontSize:12,color:colors.muted}}>Auteur : {m?names[m.sender_id]??m.sender_id:'message plus ancien'} · {new Date(r.created_at).toLocaleString('fr-FR')}</Label>
       <Button small onPress={()=>act(async()=>{await social.deleteMessage(r.message_id);await social.resolveReport(r.id);})}>Supprimer le message et clôturer</Button>
       <Button small secondary onPress={()=>act(()=>social.resolveReport(r.id))}>Classer sans suppression</Button>
-      {m?<Button small secondary onPress={()=>setTarget(m.sender_id)}>Suspendre l’auteur</Button>:null}
+      {m&&<Label style={{fontSize:12,color:colors.muted}}>{social.adminMessageDestination(m)}</Label>}{m?<Button small secondary onPress={()=>setTarget(m.sender_id)}>Suspendre l’auteur</Button>:null}
     </Card>;})}
     {target?<Card><Label style={{fontWeight:'700'}}>Suspendre {names[target]??'ce membre'} de la messagerie</Label>
       <Field value={reason} onChangeText={setReason} placeholder="Motif (obligatoire)" />
@@ -271,6 +275,6 @@ export function AdminScreen({onClose}:{onClose:()=>void}){
       <Button small secondary onPress={()=>act(()=>social.unsuspendMember(s.user_id))}>Lever la suspension</Button>
     </Card>)}
     {heading('Messages récents')}
-    {messages.map(m=><Card key={m.id}><Label style={{fontSize:12,color:colors.muted}}>{names[m.sender_id]??m.sender_id} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label>{m.body}</Label>{!m.deleted_at?<><Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button><Button small secondary onPress={()=>setTarget(m.sender_id)}>Suspendre l’auteur</Button></>:null}</Card>)}
+    {messages.map(m=><Card key={m.id}><Label style={{fontSize:12,color:colors.muted}}>De : {names[m.sender_id]??m.sender_id} · {new Date(m.created_at).toLocaleString('fr-FR')}</Label><Label style={{fontSize:12,color:colors.muted,marginTop:4}}>{social.adminMessageDestination(m)}</Label><Label>{m.body}</Label>{!m.deleted_at?<><Button small secondary onPress={()=>act(()=>social.deleteMessage(m.id))}>Supprimer</Button><Button small secondary onPress={()=>setTarget(m.sender_id)}>Suspendre l’auteur</Button></>:null}</Card>)}
   </ScrollView>;
 }

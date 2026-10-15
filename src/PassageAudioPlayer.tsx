@@ -1,7 +1,7 @@
 import {cachedVerseAudio} from './services/verseAudioCache';
 import {chapterAudio,ChapterAudio} from './services/quranAudioTimeline';
 import {Icon} from './ui/Premium';
-import {createManagedAudioPlayer as createAudioPlayer} from './services/audioFocus';
+import {createManagedAudioPlayer as createAudioPlayer,observeAudioFocusLost} from './services/audioFocus';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {KeyboardAvoidingView,LayoutAnimation,PanResponder,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {preload,clearPreloadedSource,setAudioModeAsync} from 'expo-audio';
@@ -100,6 +100,7 @@ function PassageAudioControls({userId,reciterPreference,onReciterPreference,sess
   const clearCollapse=()=>{if(collapseRef.current){clearTimeout(collapseRef.current);collapseRef.current=null;}};
   const collapseSoon=()=>{if(compact||collapseRef.current)return;collapseRef.current=setTimeout(()=>{collapseRef.current=null;setDock('mini');},3500);};
   const stop=()=>{requestRef.current++;clearBoundary();clearPause();clearCollapse();pendingRef.current=null;isPlayingRef.current=false;completedRef.current=false;if(sourceRef.current){player.pause();player.setActiveForLockScreen(false);}finishGuard.current=false;positionRef.current=null;segmentEndRef.current=null;onVerseChangeRef.current?.(null);setCurrent(null);setPlaying(false);setLoading(false);};
+  useEffect(()=>observeAudioFocusLost?.(player,stop),[player]);
   const selectionRange=():Range=>{
     if(selection==='page'||selection==='surah')return selection==='page'?currentPageRange:selectedRange;
     if(selection==='session')return selectedRange;

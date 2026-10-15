@@ -1,3 +1,6 @@
+import {useAppUsage} from './services/appUsage';
+import {useRoqya} from './services/useRoqya';
+import {RoqyaHomeSection,RoqyaScreen,MyRoqyasScreen,RoqyaPlayerScreen,RoqyaMiniPlayer} from './ui/RoqyaScreen';
 import {observeProblemReportSync} from './services/problemReports';
 import {QuizScreen} from './ui/QuizScreen';
 import {observeQuizSync} from './services/quiz';
@@ -78,6 +81,11 @@ function AppContent(){
   const connectivity=useConnectivity();
   useEffect(()=>observeOfflineSync(()=>setState(loadState())),[]);
   const [tab,setTab]=useState<Tab>('Accueil');
+  const roqya=useRoqya(state.userId);
+  useAppUsage(state.userId);
+  const [roqyaView,setRoqyaView]=useState<'catalog'|'library'|'player'|null>(null);
+  const [roqyaReturn,setRoqyaReturn]=useState<'catalog'|'library'>('catalog');
+  const openRoqyaPlayer=()=>{setReader(null);setRoqyaReturn(roqyaView==='library'?'library':'catalog');setRoqyaView('player');};
   const [utilityView,setUtilityView]=useState<'profile'|'settings'|'appearance'|'goal'|null>(null);
   const [reader,setReader]=useState<Reader|null>(null);
   const [readerFullscreen,setReaderFullscreen]=useState(false);
@@ -136,6 +144,7 @@ function AppContent(){
   };
   const leaveAccount=()=>{
     accountGeneration.current++;
+    roqya.close();setRoqyaView(null);
     clearFriendsSnapshot();
     setQuizOpen(null);const fresh=defaultState();saveState(fresh);setState(fresh);setAccount(null);
     setReader(null);setReviewOpen(false);setRecitationsOpen(false);setPendingRecitationId(null);setSocialView(null);setUtilityView(null);setTab('Accueil');setWizard(-1);setAccountIntro('show');
@@ -212,9 +221,10 @@ function AppContent(){
   const closeReader=()=>{if(reader){const latest=loadState(),source=latest.reader?.mushaf??'coranTest';const range=rangeForSource(source,page);const prior=latest.lastRead;const verseId=prior&&sourceVersePage(source,prior.verseId,page)===page?prior.verseId:sourceVersePage(source,reader.range.start,page)===page?reader.range.start:range.start;update(touch({...latest,readPages:Array.from(new Set([...(latest.readPages??[]),page])),lastRead:{page,verseId,readAt:new Date().toISOString()},...(source==='coranTest'?{reader:{...latest.reader,mushaf:'coranTest',followAudio:latest.reader?.followAudio!==false,testPage:page}}:{})}));}setReader(null);setReaderFullscreen(false);};
   const edgeBack=useMemo(()=>PanResponder.create({
     onMoveShouldSetPanResponder:(_,gesture)=>Platform.OS==='ios'&&gesture.x0<26&&gesture.dx>22&&Math.abs(gesture.dx)>Math.abs(gesture.dy)*1.4,
-    onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(dailyOpen){setDailyOpen(false);setDailyId(undefined);return;}if(wizard!==null){if(wizard>0)setWizard(wizard-1);else if(state.onboardingDone)setWizard(null);return;}if(utilityView){setUtilityView(null);return;}if(socialView){setSocialView(null);setPendingLinkId(null);return;}if(tab!=='Accueil')setTab('Accueil');},
-  }),[dailyOpen,wizard,socialView,utilityView,tab,state.onboardingDone]);
+    onPanResponderRelease:(_,gesture)=>{if(gesture.dx<75)return;if(roqyaView){setRoqyaView(roqyaView==='player'?roqyaReturn:roqyaView==='library'?'catalog':null);return;}if(dailyOpen){setDailyOpen(false);setDailyId(undefined);return;}if(wizard!==null){if(wizard>0)setWizard(wizard-1);else if(state.onboardingDone)setWizard(null);return;}if(utilityView){setUtilityView(null);return;}if(socialView){setSocialView(null);setPendingLinkId(null);return;}if(tab!=='Accueil')setTab('Accueil');},
+  }),[dailyOpen,wizard,socialView,utilityView,tab,state.onboardingDone,roqyaView,roqyaReturn]);
   useEffect(()=>{const subscription=BackHandler.addEventListener('hardwareBackPress',()=>{
+    if(roqyaView){setRoqyaView(roqyaView==='player'?roqyaReturn:roqyaView==='library'?'catalog':null);return true;}
     if(quizOpen){setQuizOpen(null);return true;}
     if(dailyOpen){setDailyOpen(false);return true;}
     if(reader){closeReader();return true;}
@@ -224,7 +234,7 @@ function AppContent(){
     if(socialView){setSocialView(null);setPendingLinkId(null);return true;}
     if(tab!=='Accueil'&&wizard===null){setTab('Accueil');return true;}
     return false;
-  });return()=>subscription.remove();},[dailyOpen,reader,page,recitationsOpen,reviewOpen,socialView,utilityView,tab,wizard,quizOpen]);
+  });return()=>subscription.remove();},[dailyOpen,reader,page,recitationsOpen,reviewOpen,socialView,utilityView,tab,wizard,quizOpen,roqyaView,roqyaReturn]);
   const statsNow=stats(state,today),prog=progress(state);
   const todaySessions=state.sessions.filter(s=>scheduledDate(s)===today&&s.status==='todo');
   const due=reviewsEnabled(state)?state.revisions.filter(r=>r.due<=today):[];
@@ -233,9 +243,9 @@ function AppContent(){
   applyTheme(state.theme??'white',state.accent,state.uiFont);
 
   return <View style={{flex:1,backgroundColor:colors.cream}}><SafeAreaView edges={['top','bottom']} style={{flex:1,backgroundColor:colors.cream}} {...(reader||socialView==='friends'||tab==='Amis'?{}:edgeBack.panHandlers)}><StatusBar barStyle="dark-content" />{(connectivity.offline||connectivity.restored)&&<View accessibilityLiveRegion="polite" style={{paddingHorizontal:14,paddingVertical:6,backgroundColor:colors.soft}}><Label style={{fontSize:11,color:colors.muted,textAlign:'center'}}>{connectivity.offline?'Mode hors connexion — les modifications seront synchronisées automatiquement':'Connexion rétablie'}</Label></View>}
-    {!reader&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&!quizOpen&&socialView!=='admin'&&<AppTopNavigation tab={tab} onTab={name=>{setQuizOpen(null);setTab(name);setSocialView(null);}} firstName={state.profile?.firstName} onProfile={()=>setUtilityView('profile')} onSettings={()=>setUtilityView('settings')} title={utilityView==='goal'?'Mon objectif':utilityView==='appearance'?'Apparence':utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'} showTabs={!utilityView} onBack={utilityView?()=>setUtilityView(null):undefined}/>}
+    {!reader&&roqyaView!=='player'&&accountIntro==='done'&&wizard===null&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&!quizOpen&&socialView!=='admin'&&<AppTopNavigation tab={tab} onTab={name=>{setRoqyaView(null);setQuizOpen(null);setTab(name);setSocialView(null);}} firstName={state.profile?.firstName} onProfile={()=>setUtilityView('profile')} onSettings={()=>setUtilityView('settings')} title={utilityView==='goal'?'Mon objectif':utilityView==='appearance'?'Apparence':utilityView==='profile'?'Profil':utilityView==='settings'?'Réglages':'Apprendre le Coran'} showTabs={!utilityView} onBack={utilityView?()=>setUtilityView(null):undefined}/>}
 
-    {accountIntro==='checking'?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Label>Ouverture de l’application…</Label></View>:accountIntro==='show'?<AccountWelcome onAuthenticated={activateAccount} onRetry={restoreSession} />:reader?<ReaderScreen reader={reader} page={page} setPage={setPage} onClose={closeReader} onHome={()=>{closeReader();setTab('Accueil');}} onChangeSurah={s=>{setReader({range:{start:s.start,end:s.end}});setPage(state.reader?.mushaf==='coranTest'?testVersePage(s.start):isZipSource(state.reader?.mushaf??'')?zipVersePage(state.reader!.mushaf as 'coran_1441',s.start):pageOf(s.start));}} onShareRecitation={id=>{setPendingRecitationId(id);setReader(null);setRecitationsOpen(true);}} onStudyValidated={()=>{setReader(null);setReaderFullscreen(false);setTab('Programme');setReviewOpen(!!(reader?.reviewTask||reader?.revisionId));}} onReviewDone={(task,grade)=>{const next=gradeReviewTask(state,task,grade);update(next);const upcoming=reviewPlan(next).session[0];if(upcoming)openReader({range:upcoming,reviewTask:upcoming});else if(!reviewOnly&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});else closeReader();}} state={state} update={update} fullscreen={readerFullscreen} setFullscreen={setReaderFullscreen} />:
+    {accountIntro==='checking'?<View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Label>Ouverture de l’application…</Label></View>:accountIntro==='show'?<AccountWelcome onAuthenticated={activateAccount} onRetry={restoreSession} />:roqyaView==='player'?<RoqyaPlayerScreen controller={roqya} onClose={()=>setRoqyaView(roqyaReturn)}/>:roqyaView==='catalog'?<RoqyaScreen controller={roqya} theme={state.theme} onClose={()=>setRoqyaView(null)} onLibrary={()=>setRoqyaView('library')} onOpen={openRoqyaPlayer}/>:roqyaView==='library'?<MyRoqyasScreen controller={roqya} theme={state.theme} onClose={()=>setRoqyaView('catalog')} onOpen={openRoqyaPlayer}/>:reader?<ReaderScreen reader={reader} page={page} setPage={setPage} onClose={closeReader} onHome={()=>{closeReader();setTab('Accueil');}} onChangeSurah={s=>{setReader({range:{start:s.start,end:s.end}});setPage(state.reader?.mushaf==='coranTest'?testVersePage(s.start):isZipSource(state.reader?.mushaf??'')?zipVersePage(state.reader!.mushaf as 'coran_1441',s.start):pageOf(s.start));}} onShareRecitation={id=>{setPendingRecitationId(id);setReader(null);setRecitationsOpen(true);}} onStudyValidated={()=>{setReader(null);setReaderFullscreen(false);setTab('Programme');setReviewOpen(!!(reader?.reviewTask||reader?.revisionId));}} onReviewDone={(task,grade)=>{const next=gradeReviewTask(state,task,grade);update(next);const upcoming=reviewPlan(next).session[0];if(upcoming)openReader({range:upcoming,reviewTask:upcoming});else if(!reviewOnly&&todaySessions[0])openReader({range:todaySessions[0],sessionId:todaySessions[0].id});else closeReader();}} state={state} update={update} fullscreen={readerFullscreen} setFullscreen={setReaderFullscreen} />:
       quizOpen?<QuizScreen userId={state.userId} initialFriend={quizOpen.friend} initialChallenge={quizOpen.challenge} onClose={()=>setQuizOpen(null)}/>:dailyOpen?<DailyContentsScreen userId={state.userId} initialId={dailyId} onClose={()=>{setDailyOpen(false);setDailyId(undefined);}} />:
       wizard!==null?<Onboarding state={state} update={update} step={wizard} setStep={setWizardStep} onDone={()=>{setWizard(null);setTab('Accueil');}} />:
       recitationsOpen?<RecitationsScreen onViewInvocation={id=>{setDailyId(id);setDailyOpen(true);}} initialRecitationId={pendingRecitationId} onClose={()=>{setRecitationsOpen(false);setPendingRecitationId(null);}} />:
@@ -247,12 +257,13 @@ function AppContent(){
       reviewOpen&&reviewsEnabled(state)?<ReviewDashboard state={state} update={update} onClose={()=>setReviewOpen(false)} onRecitations={()=>setRecitationsOpen(true)} onStatistics={()=>{setReviewOpen(false);setTab('Progrès');}} onTask={task=>{setReviewOnly(true);openReader({range:task,reviewTask:task,consolidation:task.category==='recent'});}} onStart={()=>{setReviewOnly(true);const task=reviewPlan(state).session[0];if(task)openReader({range:task,reviewTask:task,consolidation:task.category==='recent'});}} />:
       tab==='Coran'?<QuranScreen state={state} update={update} openReader={openReader} onEditKnowledge={()=>setUtilityView('goal')}/>:<>
         <ScrollView key={tab} contentContainerStyle={{paddingHorizontal:18,paddingBottom:30}}>
-          {tab==='Accueil'&&<Home onQuiz={()=>setQuizOpen({})} openDaily={id=>{setDailyId(id);setDailyOpen(true);}} state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} openReviews={()=>setReviewOpen(true)} setTab={setTab} openSettings={()=>setUtilityView('settings')} unreadCount={unreadCount} openMessages={()=>{if(!account){setUtilityView('profile');setNotice('Connecte-toi pour accéder à tes messages.');return;}setPendingLinkId(null);setTab('Amis');setSocialView('friends');}} />}
+          {tab==='Accueil'&&<Home roqyaSection={<RoqyaHomeSection controller={roqya} onBrowse={()=>setRoqyaView('catalog')} onOpen={openRoqyaPlayer}/>} onQuiz={()=>setQuizOpen({})} openDaily={id=>{setDailyId(id);setDailyOpen(true);}} state={state} prog={prog} stat={statsNow} todaySessions={todaySessions} due={due} finishEstimate={finishEstimate} openReader={openReader} openReviews={()=>setReviewOpen(true)} setTab={setTab} openSettings={()=>setUtilityView('settings')} unreadCount={unreadCount} openMessages={()=>{if(!account){setUtilityView('profile');setNotice('Connecte-toi pour accéder à tes messages.');return;}setPendingLinkId(null);setTab('Amis');setSocialView('friends');}} />}
           {tab==='Programme'&&<ProgramScreen state={state} update={update} openReader={openReader} openWizard={()=>setUtilityView('goal')} openReviews={()=>setReviewOpen(true)} />}
           {tab==='Progrès'&&<ProgressScreen openGoal={()=>setUtilityView('goal')} state={state} prog={prog} stat={statsNow} allDone={allDone} />}
         </ScrollView>
       </>}
-    {!reader&&accountIntro==='done'&&wizard===null&&!utilityView&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&!quizOpen&&socialView!=='admin'&&<BottomNavigation tab={tab} onTab={name=>{setQuizOpen(null);setTab(name);setSocialView(null);}}/>}
+    {accountIntro==='done'&&wizard===null&&roqyaView!=='player'&&<RoqyaMiniPlayer controller={roqya} onOpen={openRoqyaPlayer}/>}
+    {!reader&&roqyaView!=='player'&&accountIntro==='done'&&wizard===null&&!utilityView&&!reviewOpen&&!recitationsOpen&&!dailyOpen&&!quizOpen&&socialView!=='admin'&&<BottomNavigation tab={tab} onTab={name=>{setRoqyaView(null);setQuizOpen(null);setTab(name);setSocialView(null);}}/>}
     {notice?<Pressable accessibilityRole="alert" onPress={()=>setNotice('')} style={{position:'absolute',left:18,right:18,bottom:18,zIndex:50,padding:14,backgroundColor:colors.paper,borderWidth:1,borderColor:colors.gold,borderRadius:14,elevation:8,shadowColor:'#000',shadowOpacity:0.16,shadowRadius:8}}><Label style={{fontSize:14,fontWeight:'600'}}>{notice}  ×</Label></Pressable>:null}
   </SafeAreaView></View>;
 }

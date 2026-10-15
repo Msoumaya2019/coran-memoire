@@ -1,3 +1,4 @@
+require('./scripts/prepare-roqya-audio.cjs').prepare();
 module.exports = ({config}) => ({
   ...config,
   android: {

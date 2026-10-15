@@ -6,7 +6,7 @@ export type FriendLink={id:string;requester_id:string;recipient_id:string;status
 export type FriendOverview={id:string;display_name:string;goal_label:string;weekly_verses:number;weekly_sessions:number;goal_percent:number;quran_percent:number;current_start:number|null;current_end:number|null;is_online:boolean;updated_at:string|null};
 export type FriendGroup={id:string;name:string;owner_id:string;created_at:string;contact_user_id?:string|null};
 export type GroupMember={group_id:string;user_id:string;role:'owner'|'moderator'|'member';accepted_at:string|null;invited_by:string|null;profile?:FriendProfile};
-export type ChatMessage={id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress'|'recitation';body:string;recitation_id:string|null;recitation?:{id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string};created_at:string;deleted_at:string|null};
+export type ChatMessage={recipient_id?:string|null;recipient_name?:string|null;group_name?:string|null;id:string;link_id:string|null;group_id:string|null;sender_id:string;kind:'text'|'encouragement'|'progress'|'recitation';body:string;recitation_id:string|null;recitation?:{id:string;start_verse_id:number;end_verse_id:number;duration_ms:number;storage_path:string};created_at:string;deleted_at:string|null};
 export type MessageReport={id:string;message_id:string;reason:string;reporter_id:string;excerpt:string;status:'open'|'reviewed';created_at:string};
 export type SocialSuspension={user_id:string;reason:string;suspended_until:string|null;created_at:string};
 export type SharedGoal={id:string;link_id:string;week_start:string;target_sessions:number;proposed_by:string;accepted_at:string|null};
@@ -216,7 +216,10 @@ export async function listAdminReports():Promise<MessageReport[]>{
   return checked(await client().from('friend_message_reports').select('*').eq('status','open').order('created_at',{ascending:false}).limit(100)) as MessageReport[];
 }
 export async function listAdminMessages():Promise<ChatMessage[]>{
-  return checked(await client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100)) as ChatMessage[];
+  const {data,error}=await client().rpc('admin_messages_with_recipients');
+  if(error&&['PGRST202','42883'].includes(error.code))return checked(await client().from('friend_messages').select('*').order('created_at',{ascending:false}).limit(100)) as ChatMessage[];
+  if(error)throw new Error('Chargement de la modération impossible. Vérifie la connexion et applique la migration admin-message-recipients.sql dans Supabase.');
+  return (data??[]) as ChatMessage[];
 }
 export async function adminProfiles(ids:string[]):Promise<FriendProfile[]>{
   if(!ids.length)return [];
@@ -230,3 +233,5 @@ export async function suspendMember(userId:string,reason:string,until:string|nul
   await rpc('suspend_social_member',{p_user:userId,p_reason:reason,p_until:until});
 }
 export async function unsuspendMember(userId:string){await rpc('unsuspend_social_member',{p_user:userId});}
+
+export function adminMessageDestination(message:Pick<ChatMessage,'group_id'|'group_name'|'recipient_name'|'recipient_id'>){return message.group_id?`Groupe : ${message.group_name??'Groupe indisponible'}`:`À : ${message.recipient_name??message.recipient_id??'Destinataire indisponible'}`;}

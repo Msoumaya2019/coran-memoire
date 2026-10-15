@@ -1,3 +1,4 @@
+import {formatUsageDuration} from './services/appUsage';
 import React,{useEffect,useRef,useState} from 'react';
 import {FlatList,View} from 'react-native';
 import {Button,Card,colors,Field,Label,Title} from './ui/theme';
@@ -30,6 +31,7 @@ export function AdminAccounts({onClose}:{onClose:()=>void}){
       const p=progress(state),known=memorizedIds(state).length;
       return <Card><Label style={{fontWeight:'700'}}>{item.first_name}</Label><Label>{item.email??'Adresse non renseignée'}</Label>
         <Label style={{fontSize:12,color:colors.muted}}>Inscrit le {new Date(item.created_at).toLocaleDateString('fr-FR')}</Label>
+        {item.last_usage?<><Label>Dernière session : {new Date(item.last_usage.started_at).toLocaleString('fr-FR')}</Label><Label>Temps dans l’application : {formatUsageDuration(item.last_usage.seconds)}{!item.last_usage.ended&&Date.now()-new Date(item.last_usage.updated_at).getTime()<45000?' · En cours':''}</Label></>:<Label style={{fontSize:12,color:colors.muted}}>Durée de la dernière session : non disponible</Label>}
         {item.synced_at?<><Label>{known} verset{known===1?'':'s'} mémorisé{known===1?'':'s'} · {(p.quran*100).toFixed(1)} % du Coran</Label>
           {item.goal&&<><Label>Objectif : {item.goal.label} · {(p.goal*100).toFixed(1)} %</Label><View accessibilityLabel={`Progression de l’objectif ${(p.goal*100).toFixed(1)} pour cent`} style={{height:6,backgroundColor:colors.line,borderRadius:3,marginVertical:8}}><View style={{height:6,width:`${Math.min(100,p.goal*100)}%`,backgroundColor:colors.green,borderRadius:3}} /></View></>}
           <Label>Rythme : {paceLabels[item.pace as keyof typeof paceLabels]??'Non renseigné'}</Label>
