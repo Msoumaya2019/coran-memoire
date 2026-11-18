@@ -1,9 +1,11 @@
 import {AppState} from './program';
+import {mergeReaderAnnotations} from './readerAnnotations';
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const object=(value:any)=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 /** Three-way merge: unchanged local fields inherit the server; explicit local
  * edits (including deletions) win a same-field conflict. IDs preserve history. */
 function merge(base:any,local:any,remote:any,path=''):any{
+ if(path==='.readerAnnotations')return mergeReaderAnnotations(local,remote);
  if(same(local,base))return remote;
  if(same(remote,base)||same(local,remote))return local;
  if(Array.isArray(local)&&Array.isArray(remote)){

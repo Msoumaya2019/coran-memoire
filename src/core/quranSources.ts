@@ -2,7 +2,7 @@ import sourceBounds from '../data/quran-tests/coran_1441-bounds.json';
 import sourceDimensions from '../data/quran-tests/coran_1441-dimensions.json';
 import {verseId} from './quran';
 export type ZipSource='coran_1441';
-export const zipSources=[{id:'coran_1441',label:'Coran 1441'}] as const;
+export const zipSources=[{id:'coran_1441',label:'Coran'}] as const;
 export const isZipSource=(source:string):source is ZipSource=>source==='coran_1441';
 export function zipPageData(source:ZipSource,page:number){
  const bounds=sourceBounds as Record<string,number[][]>;

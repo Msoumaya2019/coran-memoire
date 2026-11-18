@@ -1,3 +1,4 @@
+import {mergeReaderAnnotations,ReaderAnnotations} from './readerAnnotations';
 import type {QuranPaper} from './readerAppearance';
 import {mergeBookmarks,VerseBookmark} from './bookmarks';
 import { expand, hizbs, juzs, normalizeRanges, pageOf, pageRange, quarters, halves, Range, surahAt, surahs, totalVolume, volume, weights } from './quran';
@@ -28,7 +29,7 @@ export type ReviewCycle = {index:number;startDate:string;lengthDays:number;corpu
 export type Consolidation = {learnedAt:string;scheduledDates?:Record<1|3|7,string>;completed:Partial<Record<1|3|7,string>>;completedAt?:Partial<Record<1|3|7,string>>};
 export type StudyProgress = Range & {id:string;mode:"learning"|"revision";category?:"recent"|"habitual"|"priority";through:number;page:number;source:string;updatedAt:string;status:"partial"|"completed";validations:{start:number;end:number;date:string;validatedAt?:string}[]};
 export type ConsolidationEvent={id:string;verseId:number;offset:1|3|7;learnedAt:string;scheduledDate:string;completedAt:string};
-export type AppState = { reviewCycleHistory?:ReviewCycle[];consolidationHistory?:ConsolidationEvent[]; studyProgress?:Record<string,StudyProgress>; schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; uiFont?:UiFont; accent?:AccentName; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; readPages?:number[]; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
+export type AppState = { readerAnnotations?:ReaderAnnotations; reviewCycleHistory?:ReviewCycle[];consolidationHistory?:ConsolidationEvent[]; studyProgress?:Record<string,StudyProgress>; schema: 1; onboardingDone: boolean; onboardingStep?:number; audioPreferences?:{reciterId:string}; knowledge: Record<string, Mastery>; goal: Goal; pace: Pace; learningDays: number[]; sessions: Session[]; revisions: Revision[]; updatedAt: string; userId?: string; profile?: PersonalProfile; theme?: AppTheme; uiFont?:UiFont; accent?:AccentName; notifications?: NotificationPreferences; reader?:ReaderPreferences; bookmarks?:Record<string,VerseBookmark>; readPages?:number[]; lastRead?:{page:number;verseId:number;readAt:string}; memorizedAt?:Record<string,string>; reviewSettings?:ReviewSettings; reviewHistory?:ReviewEvent[]; reviewDue?:Record<string,string>; difficultyMarkers?:Record<string,DifficultyMarker>; difficultyHistory?:DifficultyEvent[]; reviewModelStartedAt?:string; reviewCycle?:ReviewCycle|null; reviewConsolidations?:Record<string,Consolidation>; reviewPriorityDue?:Record<string,string> };
 
 export const paceLabels: Record<Pace,string> = { verse1:'1 verset',verse2:'2 versets',verse3:'3 versets',verse4:'4 versets',verse5:'5 versets',halfPage:'½ page',page:'1 page',page2:'2 pages',toumoun:'1 toumoun',quarter:'1 rub‘',halfHizb:'1 nisf',hizb:'1 hizb' };
 export const pacePresets: Record<PacePreset,{label:string;pace:Pace;description:string}> = {
@@ -59,23 +60,26 @@ export const defaultState = (): AppState => ({reviewCycleHistory:[],consolidatio
 export function migrateReaderState(state:AppState):AppState{
   if(['tawjeed_test_2','tajweed_test_2','medine_test'].includes(state.reader?.mushaf as string))state={...state,reader:{...state.reader!,mushaf:'coran_1441'}};
   if(state.sessions.some(s=>!s.scheduledDate))state={...state,sessions:state.sessions.map(s=>s.scheduledDate?s:{...s,scheduledDate:s.date})};
-  if(state.reader?.mushaf&&state.reader.mushaf!=='tajweedPages')return state;
+  if(state.reader?.mushaf&&!['tajweedPages','traditional'].includes(state.reader.mushaf))return state;
   return {...state,reader:{...state.reader,mushaf:'coranTest',followAudio:state.reader?.followAudio!==false}};
 }
 export function reconcileState(local:AppState,remote:AppState|null):{state:AppState;shouldPush:boolean}{
   local=migrateReaderState(local);if(remote)remote=migrateReaderState(remote);
   if(!remote)return {state:local,shouldPush:true};
   const bookmarks=mergeBookmarks(local.bookmarks,remote.bookmarks);
+  const readerAnnotations=mergeReaderAnnotations(local.readerAnnotations,remote.readerAnnotations);
+  const annotationsRecovered=JSON.stringify(readerAnnotations)!==JSON.stringify(remote.readerAnnotations??{});
+  remote={...remote,readerAnnotations};
   const appearanceMetadataRecovered=remote.uiFont===undefined&&local.uiFont!==undefined||remote.accent===undefined&&local.accent!==undefined||JSON.stringify(remote.readPages??[])!==JSON.stringify(Array.from(new Set([...(remote.readPages??[]),...(local.readPages??[])])));
   const studyMetadataRecovered=remote.studyProgress===undefined&&Object.keys(local.studyProgress??{}).length>0;
   remote={...remote,uiFont:remote.uiFont??local.uiFont,accent:remote.accent??local.accent,readPages:Array.from(new Set([...(remote.readPages??[]),...(local.readPages??[])])),reviewCycleHistory:remote.reviewCycleHistory??local.reviewCycleHistory,consolidationHistory:remote.consolidationHistory??local.consolidationHistory,studyProgress:remote.studyProgress??local.studyProgress??{}};
   const reviewMetadataRecovered=(remote.reviewCycle===undefined&&!!local.reviewCycle)||(remote.reviewConsolidations===undefined&&Object.keys(local.reviewConsolidations??{}).length>0)||(remote.reviewPriorityDue===undefined&&Object.keys(local.reviewPriorityDue??{}).length>0);
   remote={...remote,reviewModelStartedAt:remote.reviewModelStartedAt??local.reviewModelStartedAt,reviewCycle:remote.reviewCycle===undefined?local.reviewCycle:remote.reviewCycle,reviewConsolidations:remote.reviewConsolidations??local.reviewConsolidations,reviewPriorityDue:remote.reviewPriorityDue??local.reviewPriorityDue};
   const audioPreferences=remote.audioPreferences??local.audioPreferences;
-  if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks},shouldPush:true};
+  if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks,readerAnnotations},shouldPush:true};
   const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader?(remote.reader.testPage===undefined&&local.reader?.testPage!==undefined?{...remote.reader,testPage:local.reader.testPage}:remote.reader):local.reader,lastRead=remote.lastRead??local.lastRead;
   const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
-  if(!appearanceMetadataRecovered&&!studyMetadataRecovered&&!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
+  if(!annotationsRecovered&&!appearanceMetadataRecovered&&!studyMetadataRecovered&&!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();
   return {state:{...remote,bookmarks,audioPreferences,profile,theme,notifications,reader,lastRead,memorizedAt,reviewSettings,reviewHistory,reviewDue,difficultyMarkers,difficultyHistory,updatedAt},shouldPush:true};
 }
@@ -90,7 +94,7 @@ export function accountState(userId:string,cached:AppState|null,remote:AppState|
 export const resetAllProgress = (previous?: AppState): AppState => {
   const now = Date.now();
   const previousTime = previous ? Date.parse(previous.updatedAt) : 0;
-  return {...defaultState(),userId:previous?.userId,bookmarks:previous?.bookmarks,audioPreferences:previous?.audioPreferences,profile:previous?.profile,theme:previous?.theme??'white',accent:previous?.accent,uiFont:previous?.uiFont,notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'coranTest',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
+  return {...defaultState(),userId:previous?.userId,readerAnnotations:previous?.readerAnnotations,bookmarks:previous?.bookmarks,audioPreferences:previous?.audioPreferences,profile:previous?.profile,theme:previous?.theme??'white',accent:previous?.accent,uiFont:previous?.uiFont,notifications:previous?.notifications??{messages:true,learning:true},reader:previous?.reader??{mushaf:'coranTest',followAudio:true},reviewSettings:previous?.reviewSettings??{enabled:true,cycleDays:7},updatedAt:new Date(Math.max(now,previousTime+1)).toISOString()};
 };
 export const todayLocal = (): string => dateKey(new Date());
 export function dateKey(date: Date): string { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
