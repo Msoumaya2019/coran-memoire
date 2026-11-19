@@ -34,13 +34,15 @@ Nouveaux composants :
 - `src/services/tabletDevice.ts`, `annotationExport.ts`
 - `src/coranTest/inkLayer.ts`
 
-Extensions : `src/App.tsx`, `MushafPage.tsx`, `ui/ReaderAnnotationEditor.tsx`, `ReaderAnnotationMarks.tsx`, `ReaderMoreSheet.tsx`, `ZoomableReader.tsx`, `coranTest/CoranTestScreen.tsx`, `html.ts`, `model.ts`, `annotationLayer.ts`, `core/readerAnnotations.ts`, `core/program.ts`, `app.json`, `package.json`, `pnpm-lock.yaml`.
+Extensions : `src/App.tsx`, `MushafPage.tsx`, `ui/ReaderAnnotationEditor.tsx`, `ReaderAnnotationMarks.tsx`, `NoteHandwriting.tsx`, `ReaderMoreSheet.tsx`, `ZoomableReader.tsx`, `coranTest/CoranTestScreen.tsx`, `html.ts`, `model.ts`, `annotationLayer.ts`, `core/readerAnnotations.ts`, `core/program.ts`, `app.json`, `package.json`, `pnpm-lock.yaml`.
 
 Tests ajoutés : `tests/tablet-notebook.test.cjs`, `tests/native-ink.test.cjs` ; tests des gestes HTML étendus dans `tests/contextual-annotations.test.cjs`, environnement de simulation ajusté dans `tests/reader-zoom.test.cjs`.
 
 Dépendances Expo 57 : `expo-device ~57.0.2`, `expo-print ~57.0.2`, `expo-sharing ~57.0.21`, `react-native-view-shot 5.1.0`. `react-native-svg` et `react-native-webview` déjà présents sont réutilisés. Une nouvelle compilation native est nécessaire.
 
 ## Vérification et limites
+
+**Résultats locaux :** `pnpm run typecheck` réussi ; `pnpm test` : 239 tests réussis, aucun échec ; `git diff --check` réussi.
 
 Les tests automatisés couvrent détection/adaptation téléphone/tablette, portrait/paysage, fenêtres réduites, paires RTL, migration et restauration, séparation des éditions, fusion des suppressions, filtres/favoris/maîtrise, pression facultative, coordonnées normalisées, gomme, annuler/rétablir, validation des exports, gestes HTML et mesures natives asynchrones.
 

@@ -3,7 +3,7 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {Animated,GestureResponderEvent,PanResponder,View} from 'react-native';
 import {constrainReaderZoom,zoomReaderAt,ReaderZoom} from '../core/readerZoom';
 type ZoomTools={zoomed:boolean;textScale:number;mapPoint:(event:GestureResponderEvent,callback:(x:number,y:number)=>void)=>void;allowTap:()=>boolean};
-export function ZoomableReader({width,height,ink,inkWriting,reflow=false,centerContent=false,children}:{width:number;height:number;ink?:InkSettings;inkWriting?:React.RefObject<boolean>;reflow?:boolean;centerContent?:boolean;children:(tools:ZoomTools)=>React.ReactNode}){
+export function ZoomableReader({width,height,ink,inkWriting,focus,reflow=false,centerContent=false,children}:{width:number;height:number;ink?:InkSettings;inkWriting?:React.RefObject<boolean>;focus?:{x:number;y:number;serial:number};reflow?:boolean;centerContent?:boolean;children:(tools:ZoomTools)=>React.ReactNode}){
  const pointerType=useRef('touch'),inkRef=useRef(ink);inkRef.current=ink;
  const drawing=()=>!!inkRef.current?.enabled&&inkRef.current.tool!=='select'&&(pointerType.current==='pen'||!inkRef.current.stylusOnly);
  const view=useRef<View>(null),transform=useRef<ReaderZoom>({scale:1,x:0,y:0});
@@ -16,6 +16,7 @@ export function ZoomableReader({width,height,ink,inkWriting,reflow=false,centerC
  const local=(event:GestureResponderEvent,callback:(px:number,py:number)=>void)=>{const {pageX,pageY}=event.nativeEvent;view.current?.measureInWindow((left,top)=>callback(pageX-left,pageY-top));};
  const tools:ZoomTools={zoomed,textScale,allowTap:()=>Date.now()>suppressUntil.current,mapPoint:(event,callback)=>local(event,(px,py)=>{const z=transform.current;callback((px-z.x)/z.scale,(py-z.y)/z.scale);})};
  useEffect(()=>{apply(constrainReaderZoom(transform.current.scale,transform.current.x,transform.current.y,width,height));},[width,height]);
+ useEffect(()=>{if(focus&&!reflow)apply(constrainReaderZoom(1.7,width/2-focus.x*1.7,height/2-focus.y*1.7,width,height));},[focus?.serial,width,height]);
  const responder=useMemo(()=>PanResponder.create({
   onStartShouldSetPanResponderCapture:event=>!inkWriting?.current&&(event.nativeEvent.touches.length>1||!drawing()&&Date.now()-lastTap.current<280),
   onMoveShouldSetPanResponderCapture:(_,g)=>!inkWriting?.current&&(g.numberActiveTouches>1||(!drawing()&&!reflow&&transform.current.scale>1.01&&Math.hypot(g.dx,g.dy)>5)),
