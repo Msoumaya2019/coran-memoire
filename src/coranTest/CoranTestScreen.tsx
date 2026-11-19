@@ -1,18 +1,19 @@
+import type {AnnotationSelection} from '../core/readerAnnotations';
 import {ReaderPageTurn} from '../ui/ReaderPageTurn';
 import React,{useEffect,useRef,useState} from 'react';
 import {Platform,View,Pressable,Text} from 'react-native';
 import {PageSurface} from './PageSurface';
 import {loadTestPage} from './loadPage';
-import {adjacentTestPages,MeasuredWord,verseRegions,ReaderOverlayState,verseIndex,VerseKey} from './model';
+import {adjacentTestPages,MeasuredWord,verseRegions,ReaderOverlayState,verseIndex,VerseKey,selectionFromWords} from './model';
 import {pageAfterSwipe} from '../core/pageNavigation';
 
-export function CoranTestScreen({animate=true,page,onPage,onClose,readerState,onStudyPress,onVersePress,onVerseLongPress,onBlankLongPress,onTap}:{animate?:boolean;page:number;onPage:(page:number)=>void;onClose:()=>void;readerState?:ReaderOverlayState;onStudyPress?:()=>void;onVersePress?:(id:number)=>void;onVerseLongPress?:(id:number)=>void;onBlankLongPress?:()=>void;onTap?:()=>void}){
+export function CoranTestScreen({animate=true,page,onPage,onClose,readerState,onStudyPress,onVersePress,onVerseLongPress,onSelection,onAnnotationPress,onBlankLongPress,onTap}:{animate?:boolean;page:number;onPage:(page:number)=>void;onClose:()=>void;readerState?:ReaderOverlayState;onStudyPress?:()=>void;onVersePress?:(id:number)=>void;onVerseLongPress?:(id:number)=>void;onSelection?:(selection:AnnotationSelection)=>void;onAnnotationPress?:(id:string)=>void;onBlankLongPress?:()=>void;onTap?:()=>void}){
  const [pages,setPages]=useState<Record<number,string>>({}),[displayPage,setDisplayPage]=useState(page),[readyPage,setReadyPage]=useState<number|null>(null),[loadError,setLoadError]=useState(false),[retry,setRetry]=useState(0);
  const mounted=useRef(true);useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const readyPages=useRef(new Set<number>()),current=useRef(page);
  // Metadata remains independent of visible state. Future playback can use this
  // map without replacing the original glyphs or introducing another text view.
- const overlay=useRef(new Map<number,ReturnType<typeof verseRegions>>());
+ const overlay=useRef(new Map<number,ReturnType<typeof verseRegions>>()),measurements=useRef(new Map<number,MeasuredWord[]>());
  current.current=page;
  useEffect(()=>{
    let alive=true;const neighbors=adjacentTestPages(page);
@@ -23,16 +24,17 @@ export function CoranTestScreen({animate=true,page,onPage,onClose,readerState,on
  const receive=(target:number,data:any)=>{
    if(!mounted.current)return;
    if(data.type==='ready'&&data.page===target){
-     readyPages.current.add(target);overlay.current.set(target,verseRegions(data.words as MeasuredWord[]));
-     for(const p of overlay.current.keys())if(!adjacentTestPages(current.current).includes(p)){overlay.current.delete(p);readyPages.current.delete(p);}
+     readyPages.current.add(target);measurements.current.set(target,data.words as MeasuredWord[]);overlay.current.set(target,verseRegions(data.words as MeasuredWord[]));
+     for(const p of overlay.current.keys())if(!adjacentTestPages(current.current).includes(p)){overlay.current.delete(p);measurements.current.delete(p);readyPages.current.delete(p);}
      if(target===current.current){setDisplayPage(target);setReadyPage(target);setLoadError(false);}
    }else if(data.type==='study'&&target===displayPage){onStudyPress?.();
    }else if(data.type==='tap'&&target===displayPage){
      const id=typeof data.key==='string'?verseIndex[data.key as VerseKey]?.id:undefined;
-     if(readerState?.selecting&&id!==undefined)onVersePress?.(id);else onTap?.();
+     if(readerState?.selecting&&id!==undefined)onVersePress?.(id);else if(typeof data.annotationId==='string')onAnnotationPress?.(data.annotationId);else onTap?.();
    }else if(data.type==='longpress'&&target===displayPage){
      const id=typeof data.key==='string'?verseIndex[data.key as VerseKey]?.id:undefined;
-     if(id!==undefined)onVerseLongPress?.(id);else onBlankLongPress?.();
+     const selection=selectionFromWords(measurements.current.get(target)??[],data.key as VerseKey,data.wordId);
+     if(selection&&onSelection)onSelection({...selection,annotationId:typeof data.annotationId==='string'?data.annotationId:undefined});else if(id!==undefined)onVerseLongPress?.(id);else onBlankLongPress?.();
    }else if(data.type==='swipe'&&target===displayPage){
      if(Platform.OS==='ios'&&data.fromEdge&&data.dx>100){onClose();return;}
      const next=pageAfterSwipe(current.current,data.dx,data.dy);if(next!==current.current)onPage(next);

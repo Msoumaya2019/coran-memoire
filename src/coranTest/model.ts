@@ -1,3 +1,4 @@
+import type {AnnotationMark,AnnotationSelection} from '../core/readerAnnotations';
 import indexRaw from './data/verse-index.json';
 import {verseId,verseAt} from '../core/quran';
 import {nextAudioPosition,resolveAudioSegment,defaultReciter,Reciter,AudioPosition,RepeatCount,RepeatMode} from '../core/audio';
@@ -8,7 +9,7 @@ export type TestWord=[id:number,surah:number,ayah:number,word:number,glyphs:stri
 export type TestLine={line:number;type:'ayah'|'surah_name'|'basmallah';centered:boolean;surah:number|null;words:TestWord[]};
 export type TestPage={page:number;surah:number;juz:number;fontSize:number;lines:TestLine[]};
 export type NormalizedRegion={x:number;y:number;width:number;height:number;line:number};
-export type MeasuredWord={id:number;key:VerseKey;region:NormalizedRegion};
+export type MeasuredWord={id:number;key:VerseKey;region:NormalizedRegion;text?:string;position?:number};
 export const originalPageWidth=1000,originalPageHeight=2120;
 export const verseIndex=indexRaw as Record<VerseKey,{id:number;pages:number[];lines:number[][]}>;
 const pageRanges:Record<number,Range>={};
@@ -17,7 +18,7 @@ export function testPageRange(page:number):Range{if(!pageRanges[page])throw new 
 export const validTestPage=(page:number)=>Number.isInteger(page)&&page>=1&&page<=604;
 export const adjacentTestPages=(page:number)=>[page-1,page,page+1].filter(validTestPage);
 
-export type ReaderOverlayState={sessionThrough?:number;sessionDone?:number;sessionColor?:string;study?:{title:string;unit:string;range:string;ratio:number;primary:string;background:string};background?:string;enabled:boolean;selecting:boolean;playing:VerseKey|null;selected:VerseKey|null;bookmarks:VerseKey[];difficulty:VerseKey[];session:VerseKey[];primary:string;selection:string;gold:string};
+export type ReaderOverlayState={annotations?:AnnotationMark[];sessionThrough?:number;sessionDone?:number;sessionColor?:string;study?:{title:string;unit:string;range:string;ratio:number;primary:string;background:string};background?:string;enabled:boolean;selecting:boolean;playing:VerseKey|null;selected:VerseKey|null;bookmarks:VerseKey[];difficulty:VerseKey[];session:VerseKey[];primary:string;selection:string;gold:string};
 const keyOf=(id:number):VerseKey=>{const verse=verseAt(id);return `${verse.surah}:${verse.ayah}`;};
 export function readerOverlayState({playingVerseId,selectedVerseId,bookmarkIds=[],difficultyIds=[],sessionRange,sessionThrough=0,sessionColor,showSession=false,selecting=false,primary,selection,gold}:{playingVerseId:number|null;selectedVerseId?:number|null;bookmarkIds?:number[];difficultyIds?:number[];sessionRange:Range;sessionThrough?:number;sessionColor?:string;showSession?:boolean;selecting?:boolean;primary:string;selection:string;gold:string}):ReaderOverlayState{
  return {sessionThrough,sessionDone:Math.max(0,Math.min(sessionRange.end,sessionThrough)-sessionRange.start+1),sessionColor,enabled:true,selecting,playing:playingVerseId===null?null:keyOf(playingVerseId),selected:selectedVerseId==null?null:keyOf(selectedVerseId),bookmarks:bookmarkIds.map(keyOf),difficulty:difficultyIds.map(keyOf),session:showSession?Array.from({length:sessionRange.end-sessionRange.start+1},(_,i)=>keyOf(sessionRange.start+i)):[],primary,selection,gold};
@@ -51,3 +52,10 @@ export const testAudioAdapter={
   },
   next:(range:Range,position:AudioPosition,mode:RepeatMode,count:RepeatCount)=>nextAudioPosition(range,position,mode,count),
 };
+
+/** A word is selected from measured original glyphs, never inferred from verse width. */
+export function selectionFromWords(words:MeasuredWord[],key:VerseKey,wordId?:number):AnnotationSelection|undefined {
+ const zones=verseRegions(words)[key];const verse=verseIndex[key];if(!verse||!zones?.length)return undefined;
+ const word=words.find(w=>w.id===wordId&&w.key===key&&w.region.width>0&&w.region.height>0&&[w.region.x,w.region.y,w.region.width,w.region.height].every(Number.isFinite));
+ return {verseId:verse.id,verseKey:key,wordId:word?.id,wordIndex:word?.position,wordText:word?.text,regions:word?[{...word.region}]:zones.map(z=>({...z})),verseRegions:zones.map(z=>({...z}))};
+}

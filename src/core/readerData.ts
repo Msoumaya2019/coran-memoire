@@ -39,6 +39,19 @@ export function tajweedSpans(id:number):TajweedSpan[]{
   return spans;
 }
 
+/** Split only at real spaces; colour boundaries inside a word stay together. */
+export function tajweedWordSpans(spans:TajweedSpan[]){
+ const words:{index:number;text:string;spans:TajweedSpan[]}[]=[];
+ let current:{index:number;text:string;spans:TajweedSpan[]}|undefined;
+ for(const span of spans)for(const part of span.text.split(/(\s+)/)){
+  if(!part)continue;
+  if(/^\s+$/.test(part)){current=undefined;continue;}
+  if(!current){current={index:words.length,text:'',spans:[]};words.push(current);}
+  current.text+=part;current.spans.push({text:part,rule:span.rule});
+ }
+ return words;
+}
+
 export function verseAtImagePoint(rows:number[][],x:number,y:number,width:number,height:number,sourceWidth=1920,sourceHeight=3106):number|null{
   if(width<=0||height<=0||x<0||y<0||x>width||y>height)return null;
   const sourceX=x/width*sourceWidth,sourceY=y/height*sourceHeight;
