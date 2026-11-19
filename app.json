@@ -6,7 +6,7 @@
     "scheme": "coranmemoire",
     "version": "0.9.39",
     "icon": "./assets/icon.png",
-    "orientation": "portrait",
+    "orientation": "default",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,

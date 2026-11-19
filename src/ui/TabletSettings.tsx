@@ -1,0 +1,10 @@
+import React from 'react';
+import {Switch,View} from 'react-native';
+import {AppState,touch} from '../core/program';
+import {tabletPreferences,TabletMode} from '../core/tablet';
+import {Card,Choice,colors,Label} from './theme';
+export function TabletSettings({state,update}:{state:AppState;update:(state:AppState)=>void}){
+ const prefs=tabletPreferences(state.reader?.tablet);
+ const change=(values:Partial<typeof prefs>)=>update(touch({...state,reader:{...state.reader,mushaf:state.reader?.mushaf??'coranTest',followAudio:state.reader?.followAudio!==false,tablet:{...prefs,...values}}}));
+ return <Card><Label style={{fontWeight:'700'}}>AFFICHAGE ET APPAREIL</Label><Label style={{fontSize:16,marginTop:12,fontWeight:'600'}}>Mode tablette</Label>{([{id:'auto',label:'Automatique',subtitle:'Interface adaptée au type d’appareil et à la taille de la fenêtre.'},{id:'on',label:'Activé',subtitle:'Utiliser les outils du cahier, même sur un smartphone.'},{id:'off',label:'Désactivé',subtitle:'Conserver l’interface smartphone classique.'}] as const).map(option=><Choice key={option.id} label={option.label} subtitle={option.subtitle} selected={prefs.mode===option.id} onPress={()=>change({mode:option.id as TabletMode})}/>)}<View style={{flexDirection:'row',alignItems:'center',gap:12,marginTop:10}}><Label style={{flex:1}}>Afficher les outils d’annotation</Label><Switch accessibilityLabel="Afficher les outils d’annotation" value={prefs.toolsVisible} onValueChange={toolsVisible=>change({toolsVisible})}/></View><View style={{flexDirection:'row',alignItems:'center',gap:12,marginTop:12}}><Label style={{flex:1}}>Dessiner uniquement avec le stylet</Label><Switch accessibilityLabel="Dessiner uniquement avec le stylet" value={prefs.stylusOnly} onValueChange={stylusOnly=>change({stylusOnly})}/></View><Label style={{fontSize:12,color:colors.muted,marginTop:10}}>Désactive cette dernière option pour autoriser le dessin au doigt. La pression est utilisée seulement si le périphérique la transmet.</Label></Card>;
+}

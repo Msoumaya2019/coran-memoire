@@ -45,11 +45,11 @@ function renderer(){
  const elements=words.map(w=>({...node(),dataset:{id:String(w.id),verse:w.key,position:String(w.position)},parentElement:{dataset:{line:String(w.region.line)}},getAttribute:k=>k==='aria-label'?w.text:null,getBoundingClientRect:()=>({left:w.region.x*1000,top:w.region.y*2120,width:w.region.width*1000,height:w.region.height*2120}),closest(selector){return selector==='.word'?this:null;}}));
  const document={getElementById:id=>({paper,'verse-overlay':overlay,'note-overlay':notes})[id]??null,createElement:node,createElementNS:node,querySelectorAll:()=>elements,body:node(),documentElement:node(),fonts:{ready:{then(fn){ready=fn;return {catch(){}};}}},elementFromPoint:(x,y)=>elements.find(w=>{const r=w.getBoundingClientRect();return x>=r.left&&x<=r.left+r.width&&y>=r.top&&y<=r.top+r.height;})};
  const window={ReactNativeWebView:{postMessage:s=>messages.push(JSON.parse(s))},parent:{}};
- const context={document,window,innerWidth:1000,innerHeight:2120,Date:{now:()=>clock},setTimeout:(fn,delay)=>{const id=++sequence;timers.set(id,{fn,time:clock+delay});return id;},clearTimeout:id=>timers.delete(id),addEventListener:(name,fn)=>{(handlers[name]??=[]).push(fn);}};
+ const context={requestAnimationFrame:()=>1,document,window,innerWidth:1000,innerHeight:2120,Date:{now:()=>clock},setTimeout:(fn,delay)=>{const id=++sequence;timers.set(id,{fn,time:clock+delay});return id;},clearTimeout:id=>timers.delete(id),addEventListener:(name,fn)=>{(handlers[name]??=[]).push(fn);}};
  vm.runInNewContext(script,context);ready();const state={enabled:true,bookmarks:[],difficulty:[],session:[],primary:'#257452',selection:'#eeeeee',gold:'#dddddd',annotations:[]};window.applyReaderState(state);
- const event=(name,values={})=>{for(const fn of handlers[name]??[])fn({pointerType:'mouse',clientX:500,clientY:445,target:{closest:()=>null},...values});};
+ const event=(name,values={})=>{let stopped=false;const e={pointerType:'mouse',pointerId:1,clientX:500,clientY:445,target:{closest:()=>null},preventDefault(){},stopImmediatePropagation(){stopped=true;},...values};for(const fn of handlers[name]??[]){if(stopped)break;fn(e);}};
  const advance=ms=>{clock+=ms;for(const [id,t] of timers)if(t.time<=clock){timers.delete(id);t.fn();}};
- return {event,advance,messages,notes,apply:annotations=>window.applyReaderState({...state,annotations})};
+ return {event,advance,messages,notes,apply:annotations=>window.applyReaderState({...state,annotations}),settings:ink=>window.applyReaderState({...state,ink}),read:code=>vm.runInNewContext(code,context)};
 }
 test('the actual page sends a word-specific long press and never follows it with a tap',()=>{
  const r=renderer();r.event('pointerdown');r.advance(450);r.event('pointerup');r.advance(300);
@@ -66,4 +66,22 @@ test('persistent HTML marks reopen the attached note and disappear when it is de
  r.apply([mark]);assert.equal(r.notes.children.length,1);assert.equal(Number(r.notes.children[0].attrs.rx),67);
  r.event('pointerdown');r.event('pointerup');r.advance(300);assert.equal(r.messages.find(m=>m.type==='tap').annotationId,'saved');
  r.apply([]);assert.equal(r.notes.children.length,0);r.event('pointerdown');r.event('pointerup');r.advance(300);assert.equal(r.messages.filter(m=>m.type==='tap').at(-1).annotationId,undefined);
+});
+
+
+test('actual HTML pen drawing records normalized pressure samples without accidental word selection',()=>{
+ const r=renderer();r.settings({enabled:true,tool:'pen',color:'#16A34A',width:.003,stylusOnly:true,penStyle:'ink'});
+ r.event('pointerdown',{pointerType:'pen',pressure:.3});r.event('pointermove',{pointerType:'pen',clientX:600,clientY:500,pressure:.8});r.event('pointerup',{pointerType:'pen'});r.advance(600);
+ const commits=r.messages.filter(m=>m.type==='ink-commit');assert.equal(commits.length,1);assert.equal(commits[0].stroke.points[0].pressure,.3);assert.equal(commits[0].stroke.points[1].x,.6);assert.equal(r.messages.some(m=>m.type==='longpress'||m.type==='tap'||m.type==='swipe'),false);
+ assert.ok(r.messages.some(m=>m.type==='ink-capability'&&m.pressure));
+});
+test('stylus-only refuses finger drawing; opt-in finger pinch cancels the incomplete stroke',()=>{
+ const r=renderer(),settings={enabled:true,tool:'highlight',color:'#EAB308',width:.018,stylusOnly:true};r.settings(settings);
+ r.event('pointerdown',{pointerType:'touch'});r.event('pointermove',{pointerType:'touch',clientX:600});r.event('pointerup',{pointerType:'touch'});assert.equal(r.messages.some(m=>m.type==='ink-commit'),false);
+ r.settings({...settings,stylusOnly:false});r.event('pointerdown',{pointerType:'touch'});r.event('touchstart',{touches:[{clientX:400,clientY:400},{clientX:600,clientY:400}]});r.event('pointerup',{pointerType:'touch'});assert.equal(r.messages.some(m=>m.type==='ink-commit'),false);assert.equal(r.read('liveInk'),null);
+});
+test('palm touches during a pen stroke do not zoom or cancel its vector path',()=>{
+ const r=renderer();r.settings({enabled:true,tool:'circle',color:'#DC2626',width:.003,stylusOnly:true});r.event('pointerdown',{pointerType:'pen'});
+ r.event('pointerdown',{pointerType:'touch',pointerId:2});r.event('touchstart',{touches:[{clientX:400,clientY:400},{clientX:600,clientY:400}]});assert.equal(r.read('zoom'),1);
+ r.event('pointermove',{pointerType:'pen',clientX:600,clientY:500});r.event('pointerup',{pointerType:'pen'});assert.equal(r.messages.filter(m=>m.type==='ink-commit').length,1);
 });

@@ -1,17 +1,17 @@
-export type InkPoint = {x:number;y:number};
-export type InkTool = 'highlight'|'circle'|'pen'|'note';
+export type InkPoint = {x:number;y:number;pressure?:number};
+export type InkTool = 'highlight'|'circle'|'pen'|'note'|'underline'|'arrow';
 export type AnnotationRegion = {x:number;y:number;width:number;height:number;line?:number};
 export type AnnotationSelection = {verseId:number;verseKey?:string;wordId?:number;wordIndex?:number;wordText?:string;regions:AnnotationRegion[];verseRegions:AnnotationRegion[];annotationId?:string};
 export type NoteStroke = {points:InkPoint[];color:string};
-export type ReaderAnnotation = {id:string;source:string;page:number;tool:InkTool;color:string;points:InkPoint[];text:string;updatedAt:string;deletedAt?:string;anchor?:AnnotationSelection;handwriting?:NoteStroke[]};
-export type AnnotationMark = Pick<ReaderAnnotation,'id'|'source'|'page'|'tool'|'color'|'points'|'anchor'>;
+export type ReaderAnnotation = {id:string;source:string;page:number;tool:InkTool;color:string;points:InkPoint[];text:string;updatedAt:string;deletedAt?:string;anchor?:AnnotationSelection;handwriting?:NoteStroke[];createdAt?:string;width?:number;penStyle?:'ink'|'pencil';favorite?:boolean;masteredAt?:string;related?:{verseId:number;surah?:number;wordId?:number;wordText?:string}};
+export type AnnotationMark = Pick<ReaderAnnotation,'id'|'source'|'page'|'tool'|'color'|'points'|'anchor'|'width'|'penStyle'>;
 export type ReaderAnnotations = Record<string,ReaderAnnotation>;
 export function pageAnnotations(items:ReaderAnnotations|undefined,source:string,page:number){
   return Object.values(items??{}).filter(item=>!item.deletedAt&&item.source===source&&item.page===page).sort((a,b)=>a.updatedAt.localeCompare(b.updatedAt)||a.id.localeCompare(b.id));
 }
 /** Only mark geometry is sent to the page renderer; comments stay in the editor. */
 export function annotationMarks(items:ReaderAnnotations|undefined,source:string):AnnotationMark[]{
-  return Object.values(items??{}).filter(item=>!item.deletedAt&&item.source===source).map(({id,source,page,tool,color,points,anchor})=>({id,source,page,tool,color,points,anchor}));
+  return Object.values(items??{}).filter(item=>!item.deletedAt&&item.source===source).map(({id,source,page,tool,color,points,anchor,width,penStyle})=>({id,source,page,tool,color,points,anchor,width,penStyle}));
 }
 export function selectionForScope(selection:AnnotationSelection,scope:'word'|'verse'):AnnotationSelection{
   if(scope==='word'&&(selection.wordId!==undefined||selection.wordIndex!==undefined))return {...selection,annotationId:undefined};
