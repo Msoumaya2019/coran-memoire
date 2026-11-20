@@ -44,7 +44,7 @@ Dépendances Expo 57 : `expo-device ~57.0.2`, `expo-print ~57.0.2`, `expo-sharin
 
 ## Vérification et limites
 
-**Résultats locaux :** `pnpm run typecheck` réussi ; `pnpm test` : 241 tests réussis, aucun échec ; `git diff --check` réussi.
+**Résultats locaux :** `pnpm run typecheck` réussi ; `pnpm test` : 251 tests réussis, aucun échec ; `git diff --check` réussi.
 
 Les tests automatisés couvrent détection/adaptation téléphone/tablette, portrait/paysage, fenêtres réduites, paires RTL, migration et restauration, séparation des éditions, fusion des suppressions, filtres/favoris/maîtrise, pression facultative, coordonnées normalisées, gomme, annuler/rétablir, validation des exports, gestes HTML et mesures natives asynchrones.
 
@@ -58,3 +58,13 @@ Contrôle visuel dans un aperçu web des vrais composants, avec services réseau
 4. Synchronisation réelle entre deux comptes/appareils, nombreux traits, mémoire et fluidité lors de sessions longues.
 
 La pression est appliquée uniquement lorsque le périphérique transmet une valeur ; aucun support matériel universel ni rejet de paume garanti n’est revendiqué. Le bloc-notes manuscrit d’un commentaire utilise le composant existant et ne module pas la pression. Les commentaires manuscrits sont consultables dans l’application ; un export textuel indique leur présence mais ne les convertit pas en texte. Les captures de pages exportent le calque visible ; elles n’ajoutent pas les commentaires de l’éditeur en annexe. Le texte reste exportable sur web ; PNG/PDF sont réservés aux applications iOS/Android. Le dessin libre et l’export de page sont réservés aux éditions à mise en page fixe, pas à la lecture simplifiée qui se réorganise.
+
+## Correctifs 0.9.40 — retour Honor Pad 10 Android
+
+- Bloc-notes : gestion directe des pointeurs du stylet, indépendante de l’ordre d’attribution du responder tactile ; coordonnées locales offsetX/offsetY ; capture du geste et suspension du défilement pendant l’écriture. Une option explicite autorise le doigt ou un stylet déclaré comme contact tactile. Aucune pression n’est inventée pour cette entrée.
+- Double page : une seule WebView active par page, sans les WebViews voisines masquées qui pouvaient recouvrir le rendu. La préférence reste explicite en portrait, avec une invitation à tourner en paysage ; activation fermant le panneau de notes pour libérer la largeur.
+- Marges : espace blanc externe de 35 % de la largeur de chaque côté et de 8 % de la hauteur en haut/bas. Le texte et ses coordonnées originales restent inchangés ; les traits gardent leurs coordonnées relatives à la page, y compris négatives dans les marges. Rendu, sauvegarde, gomme, sélection et exports partagent ce repère.
+- Calque des éditions images : surface complète englobant page et marges ; entrée tactile de secours uniquement après autorisation ; les traits démarrent dès le premier contact, sans déclencher l’appui long du verset pendant le dessin.
+- Version Expo 0.9.40, build iOS 52 / versionCode Android 52. Aucune nouvelle dépendance.
+
+Validation : TypeScript réussi, 251 tests réussis. Aperçu des vrais composants avec services simulés : écriture et réouverture du bloc-notes, flèches/écriture en marge, restauration après changement de page, double page RTL et indication portrait. Le calque natif a aussi été contrôlé pour l’alignement des traits. La Honor Pad 10 physique et son stylet ne sont pas connectés à cet environnement : la recette matérielle reste à confirmer sur l’appareil de l’utilisateur.

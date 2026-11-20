@@ -12,9 +12,11 @@ export function tabletPreferences(value?:Partial<TabletPreferences>):TabletPrefe
 export function tabletLayout(mode:TabletMode,device:DeviceClass,width:number,height:number,showTools=true,notesOpen=false,spread='single'){
  const enabled=mode==='on'||mode!=='off'&&device!=='phone'&&width>=(device==='tablet'?600:768)&&height>=360;
  const landscape=width>height,sidebars=enabled&&landscape&&width>=1000&&height>=480;
- const centerWidth=Math.max(0,width-(sidebars&&showTools?72:0)-(sidebars&&notesOpen?280:0));
- const doublePage=enabled&&landscape&&spread==='double'&&centerWidth>=640&&height>=460;
- return {enabled,landscape,sidebars,doublePage,centerWidth};
+ const availableWidth=Math.max(0,width-(sidebars&&showTools?72:0));
+ const doublePage=enabled&&landscape&&spread==='double'&&availableWidth>=640&&height>=460;
+ const notesOverlay=!sidebars||doublePage&&availableWidth-280<880;
+ const centerWidth=Math.max(0,availableWidth-(sidebars&&notesOpen&&!notesOverlay?280:0));
+ return {enabled,landscape,sidebars,doublePage,centerWidth,notesOverlay};
 }
 /** Consecutive pages are read from the right pane to the left pane. */
 export function spreadPages(page:number,doublePage:boolean):number[]{
