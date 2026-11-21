@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "typecheck": "tsc --noEmit",
-    "test": "node node_modules/typescript/bin/tsc src/core/offlineMerge.ts src/core/offlineAccess.ts src/core/weeklyProgress.ts src/core/offlineQueue.ts src/core/quranSources.ts src/core/quran.ts src/core/program.ts src/core/review.ts src/core/quiz.ts src/core/quranSourceTransition.ts src/core/pageNavigation.ts src/core/readerLayout.ts src/core/studyProgress.ts src/core/readerZoom.ts src/core/readerAppearance.ts src/core/audio.ts src/core/readerData.ts src/core/ayahMarker.ts src/core/bookmarks.ts src/coranTest/model.ts src/coranTest/html.ts --ignoreConfig --module commonjs --target es2022 --moduleResolution node --resolveJsonModule --esModuleInterop --outDir tests/build --ignoreDeprecations 6.0 --skipLibCheck && node --test tests/*.test.cjs"
+    "test": "node node_modules/typescript/bin/tsc src/core/offlineMerge.ts src/core/offlineAccess.ts src/core/weeklyProgress.ts src/core/offlineQueue.ts src/core/quranSources.ts src/core/quran.ts src/core/program.ts src/core/review.ts src/core/quiz.ts src/core/quranSourceTransition.ts src/core/pageNavigation.ts src/core/readerLayout.ts src/core/studyProgress.ts src/core/readerZoom.ts src/core/readerAppearance.ts src/core/audio.ts src/core/readerData.ts src/core/marginAnnotations.ts src/core/annotationExport.ts src/core/tabletInk.ts src/core/ayahMarker.ts src/core/bookmarks.ts src/coranTest/model.ts src/coranTest/html.ts --ignoreConfig --module commonjs --target es2022 --moduleResolution node --resolveJsonModule --esModuleInterop --outDir tests/build --ignoreDeprecations 6.0 --skipLibCheck && node --test tests/*.test.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/amiri": "^0.4.1",
@@ -35,7 +35,11 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-svg": "^15.15.4",
     "react-native-url-polyfill": "^4.0.0",
-    "react-native-webview": "^13.16.1"
+    "react-native-webview": "^13.16.1",
+    "expo-device": "~57.0.2",
+    "expo-print": "~57.0.2",
+    "expo-sharing": "~57.0.21",
+    "react-native-view-shot": "5.1.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.18",

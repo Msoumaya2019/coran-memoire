@@ -37,19 +37,19 @@ test('simplified reader groups colour boundaries within one real word',()=>{
  assert.deepEqual(result.map(w=>w.text),['بِسْمِ','ٱللَّهِ','الرَّحْمَٰنِ']);assert.equal(result[0].spans.length,2);assert.equal(result[0].spans[1].rule,'madd');assert.deepEqual(result.map(w=>w.index),[0,1,2]);
 });
 
-function renderer(){
+function renderer(paperLeft=0){
  const page={page:1,surah:1,juz:1,fontSize:70,lines:[]};const html=testPageHtml(page,{page:'data:font/woff2;base64,AA==',title:'data:font/woff2;base64,AA==',basmala:'data:font/woff2;base64,AA=='});
  const script=html.match(/<script>([\s\S]*)<\/script>/)[1],messages=[],handlers={},timers=new Map();let clock=1000,sequence=0,ready;
  const node=()=>({style:{},attrs:{},children:[],setAttribute(k,v){this.attrs[k]=v;},appendChild(n){this.children.push(n);},replaceChildren(){this.children=[];}});
- const paper={...node(),getBoundingClientRect:()=>({left:0,top:0,width:1000,height:2120})},overlay=node(),notes=node();
- const elements=words.map(w=>({...node(),dataset:{id:String(w.id),verse:w.key,position:String(w.position)},parentElement:{dataset:{line:String(w.region.line)}},getAttribute:k=>k==='aria-label'?w.text:null,getBoundingClientRect:()=>({left:w.region.x*1000,top:w.region.y*2120,width:w.region.width*1000,height:w.region.height*2120}),closest(selector){return selector==='.word'?this:null;}}));
+ const paper={...node(),getBoundingClientRect:()=>({left:paperLeft,top:0,width:1000,height:2120})},overlay=node(),notes=node();
+ const elements=words.map(w=>({...node(),dataset:{id:String(w.id),verse:w.key,position:String(w.position)},parentElement:{dataset:{line:String(w.region.line)}},getAttribute:k=>k==='aria-label'?w.text:null,getBoundingClientRect:()=>({left:paperLeft+w.region.x*1000,top:w.region.y*2120,width:w.region.width*1000,height:w.region.height*2120}),closest(selector){return selector==='.word'?this:null;}}));
  const document={getElementById:id=>({paper,'verse-overlay':overlay,'note-overlay':notes})[id]??null,createElement:node,createElementNS:node,querySelectorAll:()=>elements,body:node(),documentElement:node(),fonts:{ready:{then(fn){ready=fn;return {catch(){}};}}},elementFromPoint:(x,y)=>elements.find(w=>{const r=w.getBoundingClientRect();return x>=r.left&&x<=r.left+r.width&&y>=r.top&&y<=r.top+r.height;})};
  const window={ReactNativeWebView:{postMessage:s=>messages.push(JSON.parse(s))},parent:{}};
- const context={document,window,innerWidth:1000,innerHeight:2120,Date:{now:()=>clock},setTimeout:(fn,delay)=>{const id=++sequence;timers.set(id,{fn,time:clock+delay});return id;},clearTimeout:id=>timers.delete(id),addEventListener:(name,fn)=>{(handlers[name]??=[]).push(fn);}};
+ const context={requestAnimationFrame:()=>1,document,window,innerWidth:1000,innerHeight:2120,Date:{now:()=>clock},setTimeout:(fn,delay)=>{const id=++sequence;timers.set(id,{fn,time:clock+delay});return id;},clearTimeout:id=>timers.delete(id),addEventListener:(name,fn)=>{(handlers[name]??=[]).push(fn);}};
  vm.runInNewContext(script,context);ready();const state={enabled:true,bookmarks:[],difficulty:[],session:[],primary:'#257452',selection:'#eeeeee',gold:'#dddddd',annotations:[]};window.applyReaderState(state);
- const event=(name,values={})=>{for(const fn of handlers[name]??[])fn({pointerType:'mouse',clientX:500,clientY:445,target:{closest:()=>null},...values});};
+ const event=(name,values={})=>{let stopped=false;const e={pointerType:'mouse',pointerId:1,clientX:500,clientY:445,target:{closest:()=>null},preventDefault(){},stopImmediatePropagation(){stopped=true;},...values};for(const fn of handlers[name]??[]){if(stopped)break;fn(e);}};
  const advance=ms=>{clock+=ms;for(const [id,t] of timers)if(t.time<=clock){timers.delete(id);t.fn();}};
- return {event,advance,messages,notes,apply:annotations=>window.applyReaderState({...state,annotations})};
+ return {event,advance,messages,notes,overlay,apply:annotations=>window.applyReaderState({...state,annotations}),settings:(ink,workspace=false)=>window.applyReaderState({...state,ink,workspace}),state:values=>window.applyReaderState({...state,...values}),read:code=>vm.runInNewContext(code,context)};
 }
 test('the actual page sends a word-specific long press and never follows it with a tap',()=>{
  const r=renderer();r.event('pointerdown');r.advance(450);r.event('pointerup');r.advance(300);
@@ -67,3 +67,32 @@ test('persistent HTML marks reopen the attached note and disappear when it is de
  r.event('pointerdown');r.event('pointerup');r.advance(300);assert.equal(r.messages.find(m=>m.type==='tap').annotationId,'saved');
  r.apply([]);assert.equal(r.notes.children.length,0);r.event('pointerdown');r.event('pointerup');r.advance(300);assert.equal(r.messages.filter(m=>m.type==='tap').at(-1).annotationId,undefined);
 });
+
+
+test('actual HTML pen drawing records normalized pressure samples without accidental word selection',()=>{
+ const r=renderer();r.settings({enabled:true,tool:'pen',color:'#16A34A',width:.003,stylusOnly:true,penStyle:'ink'});
+ r.event('pointerdown',{pointerType:'pen',pressure:.3});r.event('pointermove',{pointerType:'pen',clientX:600,clientY:500,pressure:.8});r.event('pointerup',{pointerType:'pen'});r.advance(600);
+ const commits=r.messages.filter(m=>m.type==='ink-commit');assert.equal(commits.length,1);assert.equal(commits[0].stroke.points[0].pressure,.3);assert.equal(commits[0].stroke.points[1].x,.6);assert.equal(r.messages.some(m=>m.type==='longpress'||m.type==='tap'||m.type==='swipe'),false);
+ assert.ok(r.messages.some(m=>m.type==='ink-capability'&&m.pressure));
+});
+test('stylus-only refuses finger drawing; opt-in finger pinch cancels the incomplete stroke',()=>{
+ const r=renderer(),settings={enabled:true,tool:'highlight',color:'#EAB308',width:.018,stylusOnly:true};r.settings(settings);
+ r.event('pointerdown',{pointerType:'touch'});r.event('pointermove',{pointerType:'touch',clientX:600});r.event('pointerup',{pointerType:'touch'});assert.equal(r.messages.some(m=>m.type==='ink-commit'),false);
+ r.settings({...settings,stylusOnly:false});r.event('pointerdown',{pointerType:'touch'});r.event('touchstart',{touches:[{clientX:400,clientY:400},{clientX:600,clientY:400}]});r.event('pointerup',{pointerType:'touch'});assert.equal(r.messages.some(m=>m.type==='ink-commit'),false);assert.equal(r.read('liveInk'),null);
+});
+test('palm touches during a pen stroke do not zoom or cancel its vector path',()=>{
+ const r=renderer();r.settings({enabled:true,tool:'circle',color:'#DC2626',width:.003,stylusOnly:true});r.event('pointerdown',{pointerType:'pen'});
+ r.event('pointerdown',{pointerType:'touch',pointerId:2});r.event('touchstart',{touches:[{clientX:400,clientY:400},{clientX:600,clientY:400}]});assert.equal(r.read('zoom'),1);
+ r.event('pointermove',{pointerType:'pen',clientX:600,clientY:500});r.event('pointerup',{pointerType:'pen'});assert.equal(r.messages.filter(m=>m.type==='ink-commit').length,1);
+});
+
+
+test('actual page accepts a handwritten arrow in the white margin, restores it and opens its note',()=>{
+ const r=renderer(400);r.settings({enabled:true,tool:'arrow',color:'#16A34A',width:.003,stylusOnly:true},true);
+ r.event('pointerdown',{pointerType:'pen',clientX:200,pressure:.6});r.event('pointermove',{pointerType:'pen',clientX:900,clientY:500,pressure:.8});r.event('pointerup',{pointerType:'pen'});
+ const commit=r.messages.find(m=>m.type==='ink-commit');assert.ok(commit);assert.equal(commit.stroke.points[0].x,-.2);assert.equal(commit.stroke.points[1].x,.5);assert.equal(commit.stroke.related,undefined);
+ const mark={...commit.stroke,source:'coranTest',page:1};r.state({workspace:true,annotations:[mark]});assert.equal(r.notes.children.length,1);assert.match(r.notes.children[0].attrs.d,/M-200,/);
+ r.event('pointerdown',{clientX:200});r.event('pointerup',{clientX:200});r.advance(350);assert.equal(r.messages.filter(m=>m.type==='tap').at(-1).annotationId,mark.id);
+});
+
+test('audio verse highlight is visible, takes precedence over difficulty and clears when playback ends',()=>{const r=renderer();r.state({playing:'1:1',difficulty:['1:1'],bookmarks:['1:1']});assert.equal(r.overlay.children[0].style.backgroundColor,'#F6C445');assert.equal(r.overlay.children[0].style.border,'2px solid #B78313');assert.equal(r.overlay.children[0].style.opacity,'0.32');r.state({playing:null});assert.equal(r.overlay.children.length,0);});

@@ -1,3 +1,4 @@
+import type {TabletPreferences} from './tablet';
 import {mergeReaderAnnotations,ReaderAnnotations} from './readerAnnotations';
 import type {QuranPaper} from './readerAppearance';
 import {mergeBookmarks,VerseBookmark} from './bookmarks';
@@ -19,7 +20,7 @@ export type UiFont = 'elegant'|'system'|'classic';
 export type AccentName = 'prune'|'rose'|'green'|'gold';
 export type NotificationPreferences = { messages: boolean; learning: boolean; friendRequests?: boolean; sharedProgress?: boolean; revision?: boolean; corrections?: boolean; adminMessages?: boolean; messagePreview?: boolean; permissionExplained?: boolean };
 // `tajweed` is kept as the stored key so existing preferences continue to work.
-export type ReaderPreferences = { mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'|'coran_1441'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
+export type ReaderPreferences = {tablet?:Partial<TabletPreferences>; mushaf:'traditional'|'tajweed'|'tajweedPages'|'coranTest'|'coran_1441'; followAudio:boolean;testPage?:number;paper?:QuranPaper };
 export type ReviewSettings = { enabled:boolean; cycleDays:7|14|21|30; mode?:'cycle'|'quantity'; dailyQuantity?:'nisf'|'hizb'|'juz'|'juz2'; resumedAt?:string };
 export type ReviewGrade = 'perfect'|'hesitant'|'rework';
 export type ReviewEvent = { id:string; date:string; scheduledDate?:string;completedAt?:string; start:number; end:number; category:'recent'|'habitual'|'priority'; grade:ReviewGrade };
@@ -77,7 +78,7 @@ export function reconcileState(local:AppState,remote:AppState|null):{state:AppSt
   remote={...remote,reviewModelStartedAt:remote.reviewModelStartedAt??local.reviewModelStartedAt,reviewCycle:remote.reviewCycle===undefined?local.reviewCycle:remote.reviewCycle,reviewConsolidations:remote.reviewConsolidations??local.reviewConsolidations,reviewPriorityDue:remote.reviewPriorityDue??local.reviewPriorityDue};
   const audioPreferences=remote.audioPreferences??local.audioPreferences;
   if(remote.updatedAt<=local.updatedAt&&!(remote.onboardingDone&&!local.onboardingDone))return {state:{...local,bookmarks,readerAnnotations},shouldPush:true};
-  const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,reader=remote.reader?(remote.reader.testPage===undefined&&local.reader?.testPage!==undefined?{...remote.reader,testPage:local.reader.testPage}:remote.reader):local.reader,lastRead=remote.lastRead??local.lastRead;
+  const profile=remote.profile??local.profile,theme=remote.theme??local.theme,notifications=remote.notifications??local.notifications,readerBase=remote.reader?(remote.reader.testPage===undefined&&local.reader?.testPage!==undefined?{...remote.reader,testPage:local.reader.testPage}:remote.reader):local.reader,reader=readerBase&&readerBase.tablet===undefined&&local.reader?.tablet?{...readerBase,tablet:local.reader.tablet}:readerBase,lastRead=remote.lastRead??local.lastRead;
   const memorizedAt=remote.memorizedAt??local.memorizedAt,reviewSettings=remote.reviewSettings??local.reviewSettings,reviewHistory=remote.reviewHistory??local.reviewHistory,reviewDue=remote.reviewDue??local.reviewDue,difficultyMarkers=remote.difficultyMarkers??local.difficultyMarkers,difficultyHistory=remote.difficultyHistory??local.difficultyHistory;
   if(!annotationsRecovered&&!appearanceMetadataRecovered&&!studyMetadataRecovered&&!reviewMetadataRecovered&&audioPreferences===remote.audioPreferences&&JSON.stringify(bookmarks)===JSON.stringify(remote.bookmarks)&&profile===remote.profile&&theme===remote.theme&&notifications===remote.notifications&&reader===remote.reader&&lastRead===remote.lastRead&&memorizedAt===remote.memorizedAt&&reviewSettings===remote.reviewSettings&&reviewHistory===remote.reviewHistory&&reviewDue===remote.reviewDue&&difficultyMarkers===remote.difficultyMarkers&&difficultyHistory===remote.difficultyHistory)return {state:remote,shouldPush:false};
   const updatedAt=new Date(Math.max(Date.now(),Date.parse(remote.updatedAt)+1,Date.parse(local.updatedAt)+1)).toISOString();

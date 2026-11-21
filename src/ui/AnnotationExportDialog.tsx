@@ -1,0 +1,24 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {Modal,Platform,TextInput,View,useWindowDimensions} from 'react-native';
+import {captureRef,releaseCapture} from 'react-native-view-shot';
+import {exportPageNumbers} from '../core/annotationExport';
+import {shareCapturedPages} from '../services/annotationExport';
+import {Button,colors,Label} from './theme';
+type ExportJob={id:string;pages:number[];index:number;format:'png'|'pdf'};
+export function AnnotationExportDialog({page,source,dimensions,onClose,onText,renderPage}:{page:number;source:string;dimensions:(page:number)=>number[];onClose:()=>void;onText:(pages:number[])=>void;renderPage:(page:number,token:string,ready:(page:number)=>void)=>React.ReactNode}){
+ const [input,setInput]=useState(String(page)),[error,setError]=useState(''),[job,setJob]=useState<ExportJob|null>(null),[sharing,setSharing]=useState(false),view=useRef<View>(null),captured=useRef<string[]>([]),busy=useRef(false),alive=useRef(true),last=useRef(''),activeJob=useRef<string|null>(null);
+ const window=useWindowDimensions();
+ useEffect(()=>()=>{alive.current=false;activeJob.current=null;for(const uri of captured.current)releaseCapture(uri);},[]);
+ useEffect(()=>{if(!job||sharing)return;const timeout=setTimeout(()=>{if(alive.current){setError('La page ne peut pas être capturée. Vérifie que ses ressources sont disponibles puis réessaie.');activeJob.current=null;setJob(null);busy.current=false;}},45000);return()=>clearTimeout(timeout);},[job,sharing]);
+ const start=(format:'png'|'pdf')=>{try{if(Platform.OS==='web')throw Error('L’export PNG/PDF nécessite l’application iOS ou Android. Les notes textuelles restent exportables ici.');const pages=exportPageNumbers(input);for(const uri of captured.current)releaseCapture(uri);captured.current=[];last.current='';busy.current=false;if(format==='png'&&pages.length!==1)throw Error('Pour une image PNG, choisis une seule page.');setError('');const id=Date.now().toString(36);activeJob.current=id;setJob({id,pages,index:0,format});}catch(e){setError(e instanceof Error?e.message:String(e));}};
+ const ready=async(readyPage:number)=>{
+  if(!job||readyPage!==job.pages[job.index]||busy.current||last.current===job.id+':'+readyPage)return;
+  busy.current=true;last.current=job.id+':'+readyPage;
+  try{await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));if(!alive.current||activeJob.current!==job.id)return;const uri=await captureRef(view,{format:'png',result:'tmpfile',handleGLSurfaceViewOnAndroid:true});if(!alive.current||activeJob.current!==job.id){releaseCapture(uri);return;}captured.current.push(uri);
+   if(job.index+1<job.pages.length){busy.current=false;setJob({...job,index:job.index+1});}
+   else{setSharing(true);await shareCapturedPages(captured.current,job.format);if(alive.current)onClose();}
+  }catch(e){if(alive.current){setError(e instanceof Error?e.message:String(e));activeJob.current=null;setJob(null);setSharing(false);busy.current=false;}}
+ };
+ const [w,h]=job?dimensions(job.pages[job.index]):[1000,2120],scale=Math.min(Math.max(1,window.width-24)/w,Math.max(1,window.height-150)/h),width=w*scale,height=h*scale;
+ return <Modal visible animationType="slide" onRequestClose={onClose}><View style={{flex:1,backgroundColor:colors.paper,paddingTop:28,paddingHorizontal:12,alignItems:'center'}}><Label style={{fontWeight:'800',fontSize:21}}>Exporter mes annotations</Label>{job?<><Label style={{fontSize:13,margin:10}}>{sharing?'Préparation du partage…':`Page ${job.pages[job.index]} · ${job.index+1}/${job.pages.length}`}</Label><View ref={view} collapsable={false} pointerEvents="none" style={{width,height,backgroundColor:colors.paper}}>{renderPage(job.pages[job.index],job.id+':'+job.index,ready)}</View><Button secondary onPress={onClose}>Annuler</Button></>:<View style={{width:'100%',maxWidth:500,gap:12,paddingVertical:20}}><Label>Édition courante : {source==='coranTest'?'Coran avec règles de Tajwid':source==='coran_1441'?'Coran':'Lecture simplifiée'}</Label><Label>Pages à exporter (exemple : 3, 5-8)</Label><TextInput accessibilityLabel="Pages à exporter" value={input} onChangeText={setInput} style={{borderWidth:1,borderColor:colors.line,borderRadius:12,padding:12,color:colors.text,minHeight:48}}/><Label style={{fontSize:12,color:colors.muted}}>Maximum 20 pages par PDF. La page est capturée avec ses couleurs et ses annotations, sans les outils. Le partage reste local à l’appareil.</Label>{source!=='tajweed'&&<><Button onPress={()=>start('png')}>Exporter une page en PNG</Button><Button onPress={()=>start('pdf')}>Exporter les pages en PDF</Button></>}<Button secondary onPress={()=>{try{onText(exportPageNumbers(input));}catch(error){setError(error instanceof Error?error.message:String(error));}}}>Exporter les notes textuelles</Button>{!!error&&<Label style={{color:colors.red}}>{error}</Label>}<Button secondary onPress={onClose}>Fermer</Button></View>}</View></Modal>;
+}
