@@ -12,9 +12,9 @@ export function tabletPreferences(value?:Partial<TabletPreferences>):TabletPrefe
 export function tabletLayout(mode:TabletMode,device:DeviceClass,width:number,height:number,showTools=true,notesOpen=false,spread='single'){
  const enabled=mode==='on'||mode!=='off'&&device!=='phone'&&width>=(device==='tablet'?600:768)&&height>=360;
  const landscape=width>height,sidebars=enabled&&landscape&&width>=1000&&height>=480;
- const availableWidth=Math.max(0,width-(sidebars&&showTools?72:0));
+ const availableWidth=Math.max(0,width-(sidebars&&showTools&&spread!=='double'?72:0));
  const doublePage=enabled&&landscape&&spread==='double'&&availableWidth>=640&&height>=460;
- const notesOverlay=!sidebars||doublePage&&availableWidth-280<880;
+ const notesOverlay=!sidebars||doublePage;
  const centerWidth=Math.max(0,availableWidth-(sidebars&&notesOpen&&!notesOverlay?280:0));
  return {enabled,landscape,sidebars,doublePage,centerWidth,notesOverlay};
 }
@@ -39,3 +39,6 @@ export function notebookEntries(items:Record<string,ReaderAnnotation>|undefined,
 export function noteTextExport(notes:ReaderAnnotation[],label:(id:number)=>string){
  return notes.map(n=>`${n.source} · page ${n.page}${n.anchor?.verseId||n.related?.verseId?' · '+label(n.anchor?.verseId||n.related!.verseId):''}${n.anchor?.wordText?' · '+n.anchor.wordText:''}\n${n.createdAt??n.updatedAt}\n${n.text||'(Sans commentaire textuel)'}${n.handwriting?.length?'\n[Note manuscrite jointe dans l’application]':''}`).join('\n\n---\n\n');
 }
+
+/** Double-page is a reading surface; existing annotations remain stored. */
+export function tabletReaderControls(tablet:boolean,doublePage:boolean,fullscreen:boolean,annotating:boolean,toolsVisible:boolean,sidebars:boolean){const canAnnotate=tablet&&!doublePage,showTools=canAnnotate&&toolsVisible&&(!fullscreen||annotating);return {canAnnotate,showTools,verticalTools:showTools&&sidebars&&!fullscreen,floatingTools:showTools&&(!sidebars||fullscreen)};}

@@ -49,7 +49,7 @@ function renderer(paperLeft=0){
  vm.runInNewContext(script,context);ready();const state={enabled:true,bookmarks:[],difficulty:[],session:[],primary:'#257452',selection:'#eeeeee',gold:'#dddddd',annotations:[]};window.applyReaderState(state);
  const event=(name,values={})=>{let stopped=false;const e={pointerType:'mouse',pointerId:1,clientX:500,clientY:445,target:{closest:()=>null},preventDefault(){},stopImmediatePropagation(){stopped=true;},...values};for(const fn of handlers[name]??[]){if(stopped)break;fn(e);}};
  const advance=ms=>{clock+=ms;for(const [id,t] of timers)if(t.time<=clock){timers.delete(id);t.fn();}};
- return {event,advance,messages,notes,apply:annotations=>window.applyReaderState({...state,annotations}),settings:(ink,workspace=false)=>window.applyReaderState({...state,ink,workspace}),state:values=>window.applyReaderState({...state,...values}),read:code=>vm.runInNewContext(code,context)};
+ return {event,advance,messages,notes,overlay,apply:annotations=>window.applyReaderState({...state,annotations}),settings:(ink,workspace=false)=>window.applyReaderState({...state,ink,workspace}),state:values=>window.applyReaderState({...state,...values}),read:code=>vm.runInNewContext(code,context)};
 }
 test('the actual page sends a word-specific long press and never follows it with a tap',()=>{
  const r=renderer();r.event('pointerdown');r.advance(450);r.event('pointerup');r.advance(300);
@@ -94,3 +94,5 @@ test('actual page accepts a handwritten arrow in the white margin, restores it a
  const mark={...commit.stroke,source:'coranTest',page:1};r.state({workspace:true,annotations:[mark]});assert.equal(r.notes.children.length,1);assert.match(r.notes.children[0].attrs.d,/M-200,/);
  r.event('pointerdown',{clientX:200});r.event('pointerup',{clientX:200});r.advance(350);assert.equal(r.messages.filter(m=>m.type==='tap').at(-1).annotationId,mark.id);
 });
+
+test('audio verse highlight is visible, takes precedence over difficulty and clears when playback ends',()=>{const r=renderer();r.state({playing:'1:1',difficulty:['1:1'],bookmarks:['1:1']});assert.equal(r.overlay.children[0].style.backgroundColor,'#F6C445');assert.equal(r.overlay.children[0].style.border,'2px solid #B78313');assert.equal(r.overlay.children[0].style.opacity,'0.32');r.state({playing:null});assert.equal(r.overlay.children.length,0);});

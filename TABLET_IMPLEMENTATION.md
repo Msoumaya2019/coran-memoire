@@ -68,3 +68,13 @@ La pression est appliquée uniquement lorsque le périphérique transmet une val
 - Version Expo 0.9.40, build iOS 52 / versionCode Android 52. Aucune nouvelle dépendance.
 
 Validation : TypeScript réussi, 251 tests réussis. Aperçu des vrais composants avec services simulés : écriture et réouverture du bloc-notes, flèches/écriture en marge, restauration après changement de page, double page RTL et indication portrait. Le calque natif a aussi été contrôlé pour l’alignement des traits. La Honor Pad 10 physique et son stylet ne sont pas connectés à cet environnement : la recette matérielle reste à confirmer sur l’appareil de l’utilisateur.
+
+## Ajustements 0.9.41
+
+- Bouton Doigt directement accessible en mode tablette, avec préférence persistante et activation du dessin.
+- Plein écran simple page : bouton Annoter, choix du doigt et outils flottants conservés pendant l'annotation.
+- Double page en lecture seule : passage en plein écran en paysage, pages jointes agrandies sans marges externes de notes. Les annotations existantes sont masquées et retrouvées en simple page.
+- Audio : verset courant surligné en jaune, prioritaire sur les marque-pages et repères de difficulté, sans modifier les glyphes ni leurs couleurs.
+- Version 0.9.41, build 53. Aucune dépendance ajoutée.
+
+Validation : TypeScript et 253 tests réussis ; aperçu des vrais composants pour les commandes en plein écran et la double page RTL agrandie. Appareil Honor Pad 10 non connecté : gestes matériels et audio réel restent à valider sur tablette.
