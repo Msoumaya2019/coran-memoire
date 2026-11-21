@@ -4,6 +4,23 @@ const at='2026-09-21';
 const ids=range=>Array.from({length:range.end-range.start+1},(_,i)=>range.start+i);
 const taskIds=tasks=>tasks.flatMap(ids);
 function stateFor(known,learnedAt){const s=p.defaultState();for(const id of known)s.knowledge[id]='perfect';if(learnedAt)s.memorizedAt=Object.fromEntries(known.map(id=>[id,learnedAt]));return s;}
+test('une part de révision page ou rubu traverse toutes les petites sourates',()=>{
+ for(const range of [q.pageRange(604),q.quarters.at(-1)]){
+  const corpus=ids(range),s=stateFor(corpus);
+  s.reviewCycle={index:1,startDate:at,lengthDays:7,corpus,days:[corpus,[],[],[],[],[],[]],completed:[],assignments:{[at]:0}};
+  const plan=r.reviewPlan(s,at);
+  assert.equal(plan.session.length,1);
+  assert.deepEqual(taskIds(plan.session),corpus);
+  assert.deepEqual(r.gradeReviewTask(s,plan.session[0],'perfect',at).reviewCycle.completed,corpus);
+ }
+});
+test('consolidation des petites sourates apprises ensemble et exclusion des trous',()=>{
+ const corpus=ids(q.pageRange(604));
+ const plan=r.reviewPlan(stateFor(corpus,p.addDays(at,-1)),at);
+ assert.equal(plan.recent.length,1);assert.deepEqual(taskIds(plan.recent),corpus);
+ const missing=q.surahs[112],partial=stateFor(corpus.filter(id=>id<missing.start||id>missing.end),p.addDays(at,-1));
+ assert.deepEqual(taskIds(r.reviewPlan(partial,at).recent),corpus.filter(id=>id<missing.start||id>missing.end));
+});
 for(const count of [1,7,10,30,60])for(const days of [7,14,21,30])test(`${count} Hizb / ${days} jours : corpus exact, aucun doublon, clôture réelle`,()=>{
  const corpus=ids({start:1,end:q.hizbs[count-1].end});let state=stateFor(corpus);state.reviewSettings.cycleDays=days;state=r.prepareReviewSchedule(state,at);
  assert.deepEqual(state.reviewCycle.corpus,corpus);assert.deepEqual(state.reviewCycle.days.flat(),corpus);assert.equal(new Set(state.reviewCycle.days.flat()).size,corpus.length);
